@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   selectAlbumRows,
@@ -10,6 +10,7 @@ import {
 import type { LibraryFilter } from "../types";
 import { HeartIcon, PlusIcon, SearchIcon, TrashIcon } from "./Icons";
 import { MusicTile } from "./Shared";
+import PlaylistModal from "./PlaylistModal";
 
 const FILTERS: { id: LibraryFilter; label: string }[] = [
   { id: "all", label: "All" },
@@ -42,7 +43,6 @@ export default function LibraryPane() {
     setLibraryFilter,
     libraryQuery,
     setLibraryQuery,
-    createPlaylist,
     deletePlaylist,
   } = store;
 
@@ -54,12 +54,7 @@ export default function LibraryPane() {
   const showTracks = libraryFilter === "all" || libraryFilter === "albums";
   const showPlaylists = libraryFilter === "all" || libraryFilter === "playlists";
   const showArtists = libraryFilter === "all" || libraryFilter === "artists";
-
-  const onCreate = async () => {
-    const name = window.prompt("Playlist name");
-    if (!name) return;
-    await createPlaylist(name);
-  };
+  const [modal, setModal] = useState<null | "create" | "import">(null);
 
   return (
     <div className="libpane">
@@ -88,6 +83,11 @@ export default function LibraryPane() {
       </div>
 
       <div className="libpane__list">
+        <PlaylistActions
+          visible={showPlaylists && !store.sidebarCollapsed}
+          openCreate={() => setModal("create")}
+          openImport={() => setModal("import")}
+        />
         {!store.backendOk && (
           <div className="libpane__empty">
             <p>Backend unreachable.</p>
@@ -99,11 +99,7 @@ export default function LibraryPane() {
 
         {store.backendOk && showPlaylists && playlists.length > 0 && (
           <div className="libpane__section">
-            {libraryFilter === "playlists" && !store.sidebarCollapsed && (
-              <button className="libpane__add" onClick={onCreate} title="New playlist">
-                <PlusIcon size={14} /> New playlist
-              </button>
-            )}
+
             {playlists.map((p) => (
               <button
                 key={p.id}
@@ -203,6 +199,32 @@ export default function LibraryPane() {
             </div>
           )}
       </div>
+
+      {modal !== null && (
+        <PlaylistModal mode={modal} onClose={() => setModal(null)} />
+      )}
+    </div>
+  );
+}
+
+function PlaylistActions({
+  visible,
+  openCreate,
+  openImport,
+}: {
+  visible: boolean;
+  openCreate: () => void;
+  openImport: () => void;
+}) {
+  if (!visible) return null;
+  return (
+    <div className="libpane__actions">
+      <button className="libpane__add" onClick={openCreate} title="New playlist">
+        <PlusIcon size={14} /> New playlist
+      </button>
+      <button className="libpane__add libpane__add--ghost" onClick={openImport} title="Import from link">
+        Import link
+      </button>
     </div>
   );
 }

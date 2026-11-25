@@ -1,0 +1,140 @@
+/*
+ * lyrics.css
+ * Bottom sheet above the now-playing bar. Timed lines highlight with playback
+ * position; clicking a line jumps the seek there. Plain lyrics fall back to a
+ * readable block.
+ */
+.lyrics {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--orca-bar-h) + 14px);
+  translate: -50% 0;
+  width: min(680px, calc(100vw - 320px));
+  max-height: 46vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--orca-surface);
+  border: 1px solid var(--orca-border);
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.7);
+  z-index: 40;
+  overflow: hidden;
+  animation: orca-lyrics-in 180ms ease;
+}
+
+@keyframes orca-lyrics-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.lyrics__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid var(--orca-border);
+}
+
+.lyrics__meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lyrics__title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--orca-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lyrics__sub {
+  font-size: 12px;
+  color: var(--orca-text-dim);
+}
+
+.lyrics__close {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--orca-text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.lyrics__close:hover {
+  background: var(--orca-surface-hover);
+  color: var(--orca-text);
+}
+
+.lyrics__body {
+  overflow-y: auto;
+  padding: 14px 18px 18px;
+  scroll-behavior: smooth;
+}
+
+.lyrics__note {
+  margin: 0;
+  color: var(--orca-text-dim);
+  font-size: 13.5px;
+  text-align: center;
+  padding: 18px 0;
+}
+
+.lyrics__lines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+
+.lyrics__line {
+  border: none;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  font-size: 21px;
+  line-height: 1.35;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.38);
+  padding: 3px 10px;
+  margin: 0 -10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 180ms ease, background 140ms ease;
+}
+
+.lyrics__line:hover {
+  color: var(--orca-text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.lyrics__line--active {
+  color: var(--orca-accent-hover);
+}
+
+.lyrics__line--active:hover {
+  color: var(--orca-accent-hover);
+}
+
+.lyrics__plain {
+  white-space: pre-wrap;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--orca-text);
+}

@@ -22,7 +22,7 @@ import {
   SEEK_MS_BACKSTEP,
   type RepeatMode,
 } from "./players";
-import type { SongDto } from "../types";
+import type { LyricLine, SongDto } from "../types";
 
 export const PLAYER_VOLUME_KEY = "orca.player.volume";
 export const PLAYER_MUTED_KEY = "orca.player.muted";
@@ -59,6 +59,8 @@ export function formatTime(ms: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+export type LyricsStatus = "idle" | "loading" | "ready" | "empty" | "error";
+
 interface PlaybackState {
   queue: SongDto[];
   cursor: number;
@@ -77,6 +79,11 @@ interface PlaybackState {
   shuffle: boolean;
   autoQueue: boolean;
   playbackRate: number;
+  lyricsOpen: boolean;
+  lyricsStatus: LyricsStatus;
+  lyricsVideoId: string | null;
+  lyrics: LyricLine[];
+  lyricsPlain: string | null;
 
   play(songs: SongDto[], startIndex?: number, context?: string): void;
   playSong(song: SongDto, context?: string): void;
@@ -93,6 +100,8 @@ interface PlaybackState {
   setAutoQueue(enabled: boolean): void;
   setNormalizeVolume(enabled: boolean): void;
   setPlaybackRate(rate: number): void;
+  toggleLyrics(): void;
+  ensureLyrics(): Promise<void>;
   clearNotice(): void;
   bindEngine(): void;
 }
@@ -235,6 +244,7 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
     });
     updateMediaSession(song);
     audioEngine.load(resolveStreamUrl(song), song.videoId, resumeAtMs);
+    if (get().lyricsOpen) void get().ensureLyrics();
   }
 
   function expandRadio(seed: SongDto): void {
@@ -298,6 +308,11 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
     shuffle: loadBool(PLAYER_SHUFFLE_KEY),
     autoQueue: loadBool(PLAYER_AUTOQUEUE_KEY, true),
     playbackRate: 1.0,
+    lyricsOpen: false,
+    lyricsStatus: "idle",
+    lyricsVideoId: null,
+    lyrics: [],
+    lyricsPlain: null,
 
     bindEngine: () => {
       if (engineBound) return;
@@ -487,6 +502,46 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
       const bounded = Math.max(0.5, Math.min(2.5, rate));
       audioEngine.setRate(bounded);
       set({ playbackRate: bounded });
+    },
+
+    toggleLyrics: () => {
+      const open = !get().lyricsOpen;
+      set({ lyricsOpen: open });
+      if (open) void get().ensureLyrics();
+    },
+
+    ensureLyrics: async () => {
+      const song = get().current;
+      if (!song) return;
+      if (
+        get().lyricsVideoId === song.videoId &&
+        (get().lyricsStatus === "loading" || get().lyricsStatus === "ready")
+      ) {
+        return;
+      }
+      set({
+        lyricsStatus: "loading",
+        lyricsVideoId: song.videoId,
+        lyrics: [],
+        lyricsPlain: null,
+      });
+      try {
+        const res = await api.lyrics(song);
+        const stillCurrent = get().current?.videoId === res.videoId;
+        if (!stillCurrent) return;
+        const hasLines = res.parsed.length > 0;
+        const hasPlain = !!(res.plain || res.synced);
+        set({
+          lyrics: hasLines ? res.parsed : [],
+          lyricsPlain: res.plain ?? res.synced ?? null,
+          lyricsStatus: hasLines || hasPlain ? "ready" : "empty",
+          lyricsVideoId: song.videoId,
+        });
+      } catch {
+        if (get().current?.videoId === song.videoId) {
+          set({ lyricsStatus: "error" });
+        }
+      }
     },
 
     clearNotice: () => {

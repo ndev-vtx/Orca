@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   HeartIcon,
   HeartOutlineIcon,
+  LyricsIcon,
   MuteIcon,
   NextIcon,
   PauseIcon,
@@ -51,6 +52,8 @@ export default function NowPlayingBar() {
   const setMuted = usePlayerStore((s) => s.setMuted);
   const setShuffle = usePlayerStore((s) => s.setShuffle);
   const cycleRepeat = usePlayerStore((s) => s.cycleRepeat);
+  const lyricsOpen = usePlayerStore((s) => s.lyricsOpen);
+  const toggleLyrics = usePlayerStore((s) => s.toggleLyrics);
 
   const saved = useLibraryStore((s) =>
     current ? s.savedIds.has(current.videoId) : false,
@@ -199,6 +202,16 @@ export default function NowPlayingBar() {
       </div>
 
       <div className="bar__right">
+        <button
+          className={`bar__ctrl${lyricsOpen ? " bar__ctrl--on" : ""}`}
+          aria-label="Lyrics"
+          aria-pressed={lyricsOpen}
+          title={lyricsOpen ? "Hide lyrics" : "Show lyrics"}
+          onClick={toggleLyrics}
+          disabled={!current}
+        >
+          <LyricsIcon size={16} />
+        </button>
         <button
           className="bar__ctrl"
           aria-label="Queue"

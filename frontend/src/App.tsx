@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
 import NowPlayingBar from "./components/NowPlayingBar";
+import LyricsPanel from "./components/LyricsPanel";
 import HomePage from "./pages/HomePage";
 import SearchPage from "./pages/SearchPage";
 import LibraryPage from "./pages/LibraryPage";
@@ -16,6 +17,7 @@ import "./styles/sidebar.css";
 import "./styles/cards.css";
 import "./styles/bar.css";
 import "./styles/pages.css";
+import "./styles/lyrics.css";
 
 export default function App() {
   const loadLibrary = useLibraryStore((s) => s.loadLibrary);
@@ -43,6 +45,7 @@ export default function App() {
           </main>
         </div>
         <NowPlayingBar />
+        <LyricsPanel />
       </div>
     </BrowserRouter>
   );

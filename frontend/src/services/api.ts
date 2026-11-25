@@ -1,6 +1,8 @@
 import type {
   FavoritesResponse,
   HomeSection,
+  ImportResult,
+  LyricsResponse,
   PlaylistDetail,
   PlaylistSummary,
   SearchFilter,
@@ -78,12 +80,7 @@ export const api = {
       title: song.title,
       artist: song.artist,
     });
-    return request<{
-      videoId: string;
-      synced: string | null;
-      plain: string | null;
-      parsed: { timeMs: number; text: string }[];
-    }>(`/api/lyrics/${encodeURIComponent(song.videoId)}?${params.toString()}`);
+    return request<LyricsResponse>(`/api/lyrics/${encodeURIComponent(song.videoId)}?${params.toString()}`);
   },
 
   favorites: () => request<FavoritesResponse>("/api/library/favorites"),
@@ -119,7 +116,7 @@ export const api = {
     ),
 
   importPlaylistUrl: (url: string) =>
-    post<{ ok: boolean; name?: string; playlistId?: number; error?: string }>(
+    post<ImportResult>(
       "/api/import",
       { url },
     ),

@@ -46,3 +46,23 @@ export interface ArtistEntry {
   artworkUrl: string;
   count: number;
 }
+
+export interface LyricLine {
+  timeMs: number;
+  text: string;
+}
+
+export interface LyricsResponse {
+  videoId: string;
+  synced: string | null;
+  plain: string | null;
+  parsed: LyricLine[];
+  error: string;
+}
+
+export interface ImportResult {
+  ok: boolean;
+  name?: string;
+  playlistId?: number;
+  error?: string;
+}
