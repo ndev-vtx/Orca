@@ -1,29 +1,49 @@
-import { useNavigate } from "react-router-dom";
 import type { SongDto } from "../types";
 import { useLibraryStore } from "../state/libraryStore";
-import { PlayIcon, HeartIcon, HeartOutlineIcon } from "./Icons";
+import { usePlayerStore } from "../state/player";
+import { PlayIcon, PauseIcon, HeartIcon, HeartOutlineIcon } from "./Icons";
 
 interface MediaCardProps {
   song: SongDto;
   roundArt?: boolean;
   subtitle?: string;
+  queue?: SongDto[];
+  index?: number;
+  context?: string;
 }
 
-export default function MediaCard({ song, roundArt = false, subtitle }: MediaCardProps) {
-  const navigate = useNavigate();
+export default function MediaCard({
+  song,
+  roundArt = false,
+  subtitle,
+  queue,
+  index = 0,
+  context = "manual",
+}: MediaCardProps) {
   const saved = useLibraryStore((s) => s.savedIds.has(song.videoId));
   const toggleSaved = useLibraryStore((s) => s.toggleSaved);
+  const currentId = usePlayerStore((s) => s.current?.videoId ?? null);
+  const playing = usePlayerStore((s) => s.playing);
+  const play = usePlayerStore((s) => s.play);
+  const playSong = usePlayerStore((s) => s.playSong);
+  const isCurrent = currentId === song.videoId;
+
+  const start = () => {
+    if (queue && queue.length > 0) {
+      play(queue, index, context);
+    } else {
+      playSong(song, context);
+    }
+  };
 
   return (
     <div
-      className="card"
+      className={`card${isCurrent ? " card--active" : ""}`}
       role="button"
       tabIndex={0}
-      onClick={() => navigate(`/search?q=${encodeURIComponent(song.artist || song.title)}`)}
+      onClick={start}
       onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          navigate(`/search?q=${encodeURIComponent(song.artist || song.title)}`);
-        }
+        if (e.key === "Enter") start();
       }}
       title={`${song.title} — ${song.artist}`}
     >
@@ -38,16 +58,17 @@ export default function MediaCard({ song, roundArt = false, subtitle }: MediaCar
         <span
           role="button"
           tabIndex={0}
-          className="card__play"
+          className={`card__play${isCurrent && playing ? " card__play--on" : ""}`}
           aria-label={`Play ${song.title}`}
           onClick={(e) => {
             e.stopPropagation();
+            start();
           }}
           onKeyDown={(e) => {
             e.stopPropagation();
           }}
         >
-          <PlayIcon size={18} />
+          {isCurrent && playing ? <PauseIcon size={18} /> : <PlayIcon size={18} />}
         </span>
         <span
           role="button"

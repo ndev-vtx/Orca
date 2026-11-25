@@ -298,3 +298,75 @@
   font-variant-numeric: tabular-nums;
   font-size: 12.5px;
 }
+
+/* --- playback wiring --------------------------------------------------- */
+.quickcard {
+  border: none;
+  text-align: left;
+  font: inherit;
+  color: var(--orca-text);
+  position: relative;
+}
+
+.quickcard__play {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  translate: 0 -50%;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: var(--orca-accent);
+  color: var(--orca-ink);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.6);
+}
+
+.quickcard:hover .quickcard__play {
+  display: flex;
+}
+
+.page__header--stack {
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.page__actions .pill {
+  cursor: pointer;
+}
+
+.page__actions .pill:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.tracktable__row--active {
+  background: rgba(77, 107, 254, 0.12);
+}
+
+.tracktable__row--active .tracktable__title {
+  color: var(--orca-accent-hover);
+}
+
+.tracktable__cue {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--orca-text);
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.tracktable__row:hover .tracktable__cue {
+  display: flex;
+}
+
+.tracktable__row:hover .tracktable__num,
+.tracktable__row:hover .tracktable__dur {
+  visibility: hidden;
+}

@@ -3,6 +3,8 @@ import { api } from "../services/api";
 import type { HomeSection } from "../types";
 import TopBar from "../components/TopBar";
 import SectionRow from "../components/SectionRow";
+import { usePlayerStore } from "../state/player";
+import { PlayIcon } from "../components/Icons";
 
 export default function HomePage() {
   const [sections, setSections] = useState<HomeSection[]>([]);
@@ -40,6 +42,7 @@ export default function HomePage() {
   }, []);
 
   const heroTracks = sections[0]?.tracks.slice(0, 8) ?? [];
+  const play = usePlayerStore((s) => s.play);
 
   return (
     <div className="page">
@@ -54,20 +57,28 @@ export default function HomePage() {
         )}
         {heroTracks.length > 0 && (
           <div className="page__quickgrid">
-            {heroTracks.map((t) => (
-              <div key={t.videoId} className="quickcard">
+            {heroTracks.map((t, i) => (
+              <button
+                key={t.videoId}
+                className="quickcard"
+                onClick={() => play(heroTracks, i, "home")}
+                title={`Play ${t.title} — ${t.artist}`}
+              >
                 {t.artworkUrl ? (
                   <img src={t.artworkUrl} alt="" loading="lazy" />
                 ) : (
                   <span className="quickcard__fallback">{t.title.charAt(0).toUpperCase()}</span>
                 )}
                 <span className="quickcard__title">{t.title}</span>
-              </div>
+                <span className="quickcard__play" aria-hidden="true">
+                  <PlayIcon size={16} />
+                </span>
+              </button>
             ))}
           </div>
         )}
         {sections.map((s) => (
-          <SectionRow key={s.title} title={s.title} tracks={s.tracks} />
+          <SectionRow key={s.title} title={s.title} tracks={s.tracks} context={`home:${s.title}`} />
         ))}
       </div>
     </div>

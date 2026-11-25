@@ -1,10 +1,15 @@
+import { useNavigate } from "react-router-dom";
 import TopBar from "../components/TopBar";
 import { useLibraryStore } from "../state/libraryStore";
 import { MusicTile } from "../components/Shared";
+import { usePlayerStore } from "../state/player";
 
 export default function LibraryPage() {
+  const navigate = useNavigate();
   const playlists = useLibraryStore((s) => s.playlists);
   const savedTracks = useLibraryStore((s) => s.savedTracks);
+  const play = usePlayerStore((s) => s.play);
+  const currentId = usePlayerStore((s) => s.current?.videoId ?? null);
 
   return (
     <div className="page">
@@ -18,7 +23,16 @@ export default function LibraryPage() {
         ) : (
           <div className="page__grid">
             {playlists.map((p) => (
-              <div key={p.id} className="card">
+              <div
+                key={p.id}
+                className="card"
+                role="button"
+                tabIndex={0}
+                onClick={() => navigate(`/playlist/${p.id}`)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") navigate(`/playlist/${p.id}`);
+                }}
+              >
                 <div className="card__art">
                   <MusicTile seed={p.name} size={160} />
                 </div>
@@ -38,7 +52,16 @@ export default function LibraryPage() {
         ) : (
           <div className="tracktable">
             {savedTracks.map((t, i) => (
-              <div key={t.videoId} className="tracktable__row">
+              <div
+                key={t.videoId}
+                className={`tracktable__row${currentId === t.videoId ? " tracktable__row--active" : ""}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => play(savedTracks, i, "library:saved")}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") play(savedTracks, i, "library:saved");
+                }}
+              >
                 <span className="tracktable__num">{i + 1}</span>
                 {t.artworkUrl && <img src={t.artworkUrl} alt="" loading="lazy" />}
                 <span className="tracktable__title">

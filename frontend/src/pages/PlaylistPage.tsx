@@ -3,9 +3,10 @@ import { useParams } from "react-router-dom";
 import { api } from "../services/api";
 import type { PlaylistDetail } from "../types";
 import TopBar from "../components/TopBar";
-import { PlayIcon, HeartIcon, HeartOutlineIcon, TrashIcon } from "../components/Icons";
+import { PlayIcon, PauseIcon, HeartIcon, HeartOutlineIcon, TrashIcon } from "../components/Icons";
 import { MusicTile } from "../components/Shared";
 import { useLibraryStore } from "../state/libraryStore";
+import { usePlayerStore } from "../state/player";
 
 export default function PlaylistPage() {
   const { id } = useParams();
@@ -15,6 +16,19 @@ export default function PlaylistPage() {
   const savedIds = useLibraryStore((s) => s.savedIds);
   const toggleSaved = useLibraryStore((s) => s.toggleSaved);
   const deletePlaylist = useLibraryStore((s) => s.deletePlaylist);
+  const play = usePlayerStore((s) => s.play);
+  const currentId = usePlayerStore((s) => s.current?.videoId ?? null);
+  const playing = usePlayerStore((s) => s.playing);
+
+  const playAll = () => {
+    if (!detail || detail.tracks.length === 0) return;
+    play(detail.tracks, 0, `playlist:${detail.name}`);
+  };
+
+  const playRow = (index: number) => {
+    if (!detail) return;
+    play(detail.tracks, index, `playlist:${detail.name}`);
+  };
 
   useEffect(() => {
     if (!Number.isFinite(playlistId)) return;
@@ -49,8 +63,17 @@ export default function PlaylistPage() {
             </p>
             {!error && detail && (
               <div className="page__actions">
-                <button className="btn-play" aria-label={`Play ${detail.name}`}>
-                  <PlayIcon size={16} />
+                <button
+                  className="btn-play"
+                  aria-label={`Play ${detail.name}`}
+                  onClick={playAll}
+                  disabled={detail.tracks.length === 0}
+                >
+                  {playing && detail.tracks.some((t) => t.videoId === currentId) ? (
+                    <PauseIcon size={16} />
+                  ) : (
+                    <PlayIcon size={16} />
+                  )}
                 </button>
                 <button className="bar__ctrl" aria-label="Delete playlist" title="Delete playlist" onClick={() => void deletePlaylist(playlistId)}>
                   <TrashIcon size={16} />
@@ -66,8 +89,17 @@ export default function PlaylistPage() {
             {detail.tracks.map((t, i) => {
               const saved = savedIds.has(t.videoId);
               return (
-                <div key={t.videoId} className="tracktable__row">
-                  <span className="tracktable__num">{i + 1}</span>
+                <div
+                  key={t.videoId}
+                  className={`tracktable__row${currentId === t.videoId ? " tracktable__row--active" : ""}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => playRow(i)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") playRow(i);
+                  }}
+                >
+                  <span className="tracktable__num">{currentId === t.videoId && playing ? <PauseIcon size={13} /> : i + 1}</span>
                   {t.artworkUrl && <img src={t.artworkUrl} alt="" loading="lazy" />}
                   <span className="tracktable__title">
                     {t.title}

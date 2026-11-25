@@ -124,6 +124,19 @@ export const api = {
       { url },
     ),
 
+  nowPlaying: (song: SongDto, context: string) =>
+    post<{ ok: boolean }>("/api/now-playing", {
+      song: {
+        videoId: song.videoId,
+        title: song.title,
+        artist: song.artist,
+        duration: song.duration,
+        artworkUrl: song.artworkUrl,
+        type: song.type,
+      },
+      context,
+    }),
+
   streamUrl: (videoId: string, mode: "redirect" | "proxy" = "redirect") =>
     mode === "proxy"
       ? `${BASE}/api/stream/proxy/${encodeURIComponent(videoId)}`

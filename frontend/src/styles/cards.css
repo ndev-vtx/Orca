@@ -145,3 +145,53 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* --- playback states -------------------------------------------------- */
+.section__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.section__head .section__title {
+  margin: 0;
+}
+
+.section__playall {
+  border: none;
+  background: transparent;
+  color: var(--orca-text-dim);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+.section__playall:hover:not(:disabled) {
+  color: var(--orca-accent-hover);
+}
+
+.section__playall:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.card--active {
+  background: var(--orca-surface-raised);
+}
+
+.card--active .card__title {
+  color: var(--orca-accent-hover);
+}
+
+.card__play--on {
+  opacity: 1;
+  transform: translateY(0);
+  background: var(--orca-accent-hover);
+}

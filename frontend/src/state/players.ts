@@ -3,6 +3,7 @@
  * Phase 3 (playback engine) will import the deeper constants from here;
  * keep the numbers identical to backend/orca/config.py.
  */
+export const RADIO_DEPTH = 26;
 export const SEARCH_DEBOUNCE_MS = 350;
 export const SWITCH_TIMEOUT_MS = 28000;
 export const SEEK_MS_BACKSTEP = 3500;
