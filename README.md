@@ -1,0 +1,67 @@
+# Orca
+
+<div align="center">
+  <img src="frontend/public/orca-icon.svg" width="72" alt="Orca icon" />
+  <h3><em>Deep, dark, and always in motion — an ocean of music.</em></h3>
+</div>
+
+Orca is a rebuilt music companion on top of the proven Ember music core: YouTube
+Music catalog search, yt-dlp stream resolution with an LRU stream cache, SQLite
+playlists / favorites / history, LRCLIB lyrics, and playlist import from
+YouTube & Spotify links — now behind the Spotify-style Web/Desktop UI in deep
+black with DeepSeek dolphin-blue accents (`#4D6BFE` / `#6E8BFF`).
+
+## Layout
+
+```
+orca/
+├── backend/        Python FastAPI + WebSocket API over the unmodified core
+│   ├── orca/       catalog · stream · cache · storage · lyrics · importer · exporter
+│   └── tests/      pytest suite (41 tests)
+└── frontend/       React 18 + TypeScript + Vite Spotify-style shell
+```
+
+## Run the backend
+
+```bash
+cd backend
+pip install -r requirements.txt
+uvicorn orca.server:app --host 127.0.0.1 --port 8765
+# diagnostics: python -c "from orca import doctor; print(*doctor.collect(), sep='\n')"
+```
+
+## Run the frontend
+
+```bash
+cd frontend
+npm install
+npm run dev          # http://localhost:5173, /api and /ws proxied to :8765
+npm run build        # typecheck + production bundle
+```
+
+## API surface (phase 1)
+
+| Area | Endpoints |
+|:---|:---|
+| Catalog | `GET /api/search`, `GET /api/home`, `GET /api/similar/{id}`, `GET /api/artists/top`, `GET /api/artist/{browseId}` |
+| Streaming | `POST /api/resolve`, `GET /api/stream/{id}` (302), `GET /api/stream/proxy/{id}` (bytes, Range-aware) |
+| Lyrics | `GET /api/lyrics/{id}` |
+| Library | favorites · history · `now-playing` · playlist CRUD |
+| Import/Export | `POST /api/import`, `POST /api/export` |
+| Live sync | `WS /ws` |
+
+Signed `googlevideo` URLs are never logged and never leak through error payloads.
+
+## Tests
+
+```bash
+cd backend && python -m pytest tests/
+cd frontend && npm run build   # strict TypeScript
+```
+
+## Roadmap
+
+- [x] Phase 1 — core rebrand + backend API
+- [x] Phase 2 — Spotify-style UI shell (3-pane layout, sidebar, library, now-playing bar)
+- [ ] Phase 3 — playback engine (PlaybackCore state machine ported to TypeScript)
+- [ ] Phase 4 — queue & lyrics views, import/export UI, Electron shell

@@ -1,0 +1,25 @@
+.orca-app {
+  height: 100vh;
+  padding: var(--orca-gap) var(--orca-gap) 0 var(--orca-gap);
+  display: flex;
+  flex-direction: column;
+  background: var(--orca-black);
+  gap: var(--orca-gap);
+}
+
+.orca-app__panes {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: var(--orca-gap);
+}
+
+.orca-main {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-radius: var(--orca-radius);
+  background: var(--orca-surface);
+}

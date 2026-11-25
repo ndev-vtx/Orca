@@ -1,0 +1,94 @@
+/*
+ * Orca design tokens.
+ * Deep black surfaces + DeepSeek dolphin-style electric ocean blue accent.
+ */
+:root {
+  --orca-black: #000000;
+  --orca-ink: #05070c;
+  --orca-surface: #121212;
+  --orca-surface-raised: #1a1a1a;
+  --orca-surface-hover: #282828;
+  --orca-border: rgba(255, 255, 255, 0.08);
+  --orca-text: #ffffff;
+  --orca-text-dim: #b3b3b3;
+  --orca-text-faint: #7a7a7a;
+  --orca-accent: #4d6bfe;
+  --orca-accent-hover: #6e8bff;
+  --orca-accent-glow: rgba(77, 107, 254, 0.35);
+  --orca-danger: #e91429;
+
+  --orca-gap: 8px;
+  --orca-radius: 8px;
+  --orca-radius-card: 6px;
+  --orca-sidebar-w: 260px;
+  --orca-sidebar-collapse-w: 80px;
+  --orca-bar-h: 88px;
+
+  --orca-font:
+    "Inter", "Noto Sans", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--orca-black);
+  color: var(--orca-text);
+  font-family: var(--orca-font);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+#root {
+  height: 100vh;
+}
+
+button {
+  font-family: inherit;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+input {
+  font-family: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.34);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
