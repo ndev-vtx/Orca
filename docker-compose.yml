@@ -1,0 +1,12 @@
+services:
+  orca:
+    build: .
+    image: orca:latest
+    container_name: orca
+    ports:
+      - "8765:8765"
+    environment:
+      TZ: ${TZ:-UTC}
+    volumes:
+      - ./orca-data:/data
+    restart: unless-stopped

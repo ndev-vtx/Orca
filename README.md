@@ -65,3 +65,27 @@ cd frontend && npm run build   # strict TypeScript
 - [x] Phase 2 — Spotify-style UI shell (3-pane layout, sidebar, library, now-playing bar)
 - [ ] Phase 3 — playback engine (PlaybackCore state machine ported to TypeScript)
 - [ ] Phase 4 — queue & lyrics views, import/export UI, Electron shell
+
+## Run the whole web app in Docker
+
+```bash
+docker compose up -d --build
+# Orca on http://localhost:8765 — UI + API from one service
+```
+
+The image builds the React frontend (Node stage), installs the Python core,
+and serves both from a single uvicorn process. `ORCA_DATA_DIR=/data` holds
+`orca.db` (favorites, history, playlists) — mounted to `./orca-data` on the
+host so data survives rebuilds.
+
+No Docker? The backend serves a built frontend by itself:
+
+```bash
+cd frontend && npm run build
+cd ../backend && pip install -r requirements.txt
+uvicorn orca.server:app --host 0.0.0.0 --port 8765
+# http://localhost:8765 serves the UI; /api and /ws as documented above
+```
+
+The static mount is opt-in: it activates when `frontend/dist` exists
+(or set `ORCA_STATIC_DIR`), and never shadows `/api` or `/ws`.

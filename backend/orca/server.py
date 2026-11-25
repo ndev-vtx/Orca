@@ -25,6 +25,9 @@ import requests as http_client
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.types import Scope
 
 from . import __version__, doctor
 from .catalog import CatalogSource
@@ -79,6 +82,38 @@ _catalog: Optional[CatalogSource] = None
 _resolver: Optional[StreamResolver] = None
 _storage: Optional[OrcaStorage] = None
 _exporter: Optional[AudioExporter] = None
+
+
+class SPAStaticFiles(StaticFiles):
+    """Static frontend with an index.html fallback so client routes (e.g.
+    /playlist/3, /queue) deep-link correctly. API 404s never reach here: the
+    mount is registered after every /api route.
+    """
+
+    async def get_response(self, path: str, scope: Scope):
+        try:
+            response = await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code == 404 and not (
+                path.startswith("api/") or path.startswith("ws")
+            ):
+                return await super().get_response("index.html", scope)
+            raise
+        if response.status_code == 404 and not (
+            path.startswith("api/") or path.startswith("ws")
+        ):
+            return await super().get_response("index.html", scope)
+        return response
+
+
+def static_dir() -> Optional[Path]:
+    """Where the built frontend lives; ORCA_STATIC_DIR wins, else repo layout."""
+    override = os.environ.get("ORCA_STATIC_DIR")
+    if override:
+        candidate = Path(override)
+        return candidate if (candidate / "index.html").is_file() else None
+    default = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+    return default if (default / "index.html").is_file() else None
 
 
 def data_dir() -> Path:
@@ -691,6 +726,11 @@ def create_app() -> FastAPI:
             "streamCacheTtlS": STREAM_CACHE_TTL_S,
             "defaultCacheMaxMb": DEFAULT_CACHE_MAX_MB,
         }
+
+    assets = static_dir()
+    if assets is not None:
+        app.mount("/", SPAStaticFiles(directory=assets, html=True), name="spa")
+        log.info("serving frontend from %s", assets)
 
     return app
 
