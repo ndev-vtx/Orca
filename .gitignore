@@ -11,3 +11,4 @@ build/
 orca.db
 *.log
 *.tsbuildinfo
+.vercel
