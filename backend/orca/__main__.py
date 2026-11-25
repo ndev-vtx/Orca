@@ -1,0 +1,6 @@
+"""`python -m orca` — launch the Orca backend server."""
+
+from .server import main
+
+if __name__ == "__main__":
+    main()
