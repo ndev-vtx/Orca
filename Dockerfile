@@ -25,6 +25,8 @@ ENV ORCA_HOST=0.0.0.0 \
     ORCA_PORT=8765 \
     ORCA_DATA_DIR=/data \
     ORCA_STATIC_DIR=/app/static
+# PaaS providers (Render, Railway, Koyeb, Fly) inject their own PORT;
+# the shell form honors it and falls back to 8765 for plain Docker.
 EXPOSE 8765
 
 RUN useradd --create-home orca \
@@ -32,4 +34,4 @@ RUN useradd --create-home orca \
     && chown -R orca:orca /app /data
 USER orca
 
-CMD ["python", "-m", "uvicorn", "orca.server:app", "--host", "0.0.0.0", "--port", "8765"]
+CMD ["sh", "-c", "python -m uvicorn orca.server:app --host 0.0.0.0 --port ${PORT:-8765}"]
