@@ -6,13 +6,16 @@
  * budget, previous-restarts-before-backstep, repeat modes, shuffle upcoming,
  * history reporting and MediaSession metadata.
  *
- * Stream resolution is delegated to the Orca FastAPI backend:
- * /api/stream/{videoId} signs a fresh URL (or 404s for dead tracks), and
- * /api/now-playing mirrors record_history so the recommendation engine sees
- * the same signal as the desktop app.
+ * Stream resolution is delegated to the Orca FastAPI backend and now goes
+ * resolve-first: startLoad asks POST /api/resolve for the signed URL (or the
+ * real failure reason + whether it is permanent) before touching the media
+ * element. If the browser cannot play the direct signed URL — it is bound to
+ * the server's egress IP, so on hosts like Vercel the browser gets a 403 —
+ * the store retries a single time per track through /api/stream/proxy, which
+ * relays the bytes and works from any client address.
  */
 import { create } from "zustand";
-import { api } from "../services/api";
+import { api, ApiError } from "../services/api";
 import { audioEngine, type EngineEvent } from "../services/audioEngine";
 import {
   DEFAULT_VOLUME,
@@ -109,7 +112,6 @@ interface PlaybackState {
 let noticeTimer: number | null = null;
 let engineBound = false;
 const deadTracks = new Set<string>();
-const retriedTracks = new Set<string>();
 let loadedId: string | null = null;
 let switching = false;
 let errorStreak = 0;
@@ -117,7 +119,7 @@ let radioSeed: string | null = null;
 let radioInFlight = false;
 let advanceAfterRadio = false;
 let historyReportedId: string | null = null;
-let stalledUrlRetry: string | null = null;
+const proxyTried = new Set<string>();
 
 export const usePlayerStore = create<PlaybackState>((set, get) => {
   function announce(message: string): void {
@@ -129,8 +131,30 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
     }, NOTICE_MS);
   }
 
-  function resolveStreamUrl(song: SongDto): string {
-    return api.streamUrl(song.videoId, "redirect");
+  function proxyStreamUrl(song: SongDto): string {
+    return api.streamUrl(song.videoId, "proxy");
+  }
+
+  function failTrack(song: SongDto, message: string, permanent: boolean): void {
+    if (loadedId === song.videoId) switching = false;
+    set({ loading: false, lastError: message });
+    announce(message);
+    deadTracks.add(song.videoId);
+    if (permanent) return;
+    errorStreak += 1;
+    if (errorStreak <= MAX_AUTO_SKIP) {
+      get().next(true);
+    } else {
+      errorStreak = 0;
+    }
+  }
+
+  function tryProxyRetry(song: SongDto, atMs: number): boolean {
+    if (proxyTried.has(song.videoId)) return false;
+    proxyTried.add(song.videoId);
+    announce("retrying through the Orca proxy");
+    audioEngine.resumeAt(proxyStreamUrl(song), song.videoId, atMs);
+    return true;
   }
 
   function reportHistory(song: SongDto, context: string): void {
@@ -180,6 +204,7 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
       case "opened":
         if (!switching) break;
         switching = false;
+        errorStreak = 0;
         set({ loading: false });
         break;
       case "ended": {
@@ -193,47 +218,40 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
           ? state.queue[state.cursor] ?? null
           : state.current;
         if (!song || loadedId !== song.videoId) break;
-        if (event.atMs > 0 && stalledUrlRetry !== song.videoId && !event.signedUrlDead) {
-          stalledUrlRetry = song.videoId;
-          audioEngine.resumeAt(
-            resolveStreamUrl(song),
-            song.videoId,
-            Math.max(0, event.atMs - 1500),
-          );
-          break;
-        }
-        if (
-          event.signedUrlDead &&
-          stalledUrlRetry !== song.videoId &&
-          !retriedTracks.has(song.videoId)
-        ) {
-          retriedTracks.add(song.videoId);
-          announce("refreshing the stream");
-          audioEngine.resumeAt(resolveStreamUrl(song), song.videoId, 0);
-          break;
-        }
-        switching = false;
-        set({ loading: false, lastError: event.message });
-        announce(event.message);
-        deadTracks.add(song.videoId);
-        errorStreak += 1;
-        if (errorStreak <= MAX_AUTO_SKIP) {
-          get().next(true);
-        } else {
-          errorStreak = 0;
-        }
+        if (tryProxyRetry(song, Math.max(0, event.atMs - 1500))) break;
+        failTrack(song, event.message, false);
         break;
       }
     }
   }
 
+  async function openStream(song: SongDto, resumeAtMs: number): Promise<void> {
+    let res;
+    try {
+      res = await api.resolveStream(song.videoId);
+    } catch (exc) {
+      if (loadedId !== song.videoId) return;
+      failTrack(
+        song,
+        exc instanceof ApiError ? exc.message : "could not reach the Orca backend",
+        false,
+      );
+      return;
+    }
+    if (loadedId !== song.videoId) return;
+    if (res.error || !res.url) {
+      failTrack(song, res.error || "the server returned no audio stream", res.permanent);
+      return;
+    }
+    switching = true;
+    audioEngine.load(res.url, song.videoId, resumeAtMs);
+  }
+
   function startLoad(song: SongDto, resumeAtMs: number): void {
     deadTracks.delete(song.videoId);
-    retriedTracks.delete(song.videoId);
-    stalledUrlRetry = null;
+    proxyTried.delete(song.videoId);
     loadedId = song.videoId;
     switching = true;
-    errorStreak = 0;
     historyReportedId = null;
     set({
       current: song,
@@ -243,7 +261,7 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
       lastError: "",
     });
     updateMediaSession(song);
-    audioEngine.load(resolveStreamUrl(song), song.videoId, resumeAtMs);
+    void openStream(song, resumeAtMs);
     if (get().lyricsOpen) void get().ensureLyrics();
   }
 

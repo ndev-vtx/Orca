@@ -34,8 +34,8 @@ class ResolveRequest(BaseModel):
 class ResolveResponse(BaseModel):
     url: str
     format: str = "audio/mp4"
-    cached: bool = False
     error: str = ""
+    permanent: bool = False
 
 
 class ResolveProxyResponse(BaseModel):

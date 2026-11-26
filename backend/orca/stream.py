@@ -36,6 +36,8 @@ PERMANENT_FAILURE_MARKERS = (
     "sign in to confirm you’re not a bot",
     "this video is age-restricted",
     "video unavailable",
+    "video is unavailable",
+    "video isn't available anymore",
     "private video",
     "members-only",
 )

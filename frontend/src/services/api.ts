@@ -53,6 +53,12 @@ function del<T>(path: string): Promise<T> {
   return request<T>(path, { method: "DELETE" });
 }
 
+export interface ResolveStreamResult {
+  url: string;
+  error: string;
+  permanent: boolean;
+}
+
 export interface SearchParams {
   query: string;
   filter?: SearchFilter;
@@ -133,6 +139,9 @@ export const api = {
       },
       context,
     }),
+
+  resolveStream: (videoId: string) =>
+    post<ResolveStreamResult>("/api/resolve", { video_id: videoId }),
 
   streamUrl: (videoId: string, mode: "redirect" | "proxy" = "redirect") =>
     mode === "proxy"

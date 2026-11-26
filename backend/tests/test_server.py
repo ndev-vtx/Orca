@@ -48,8 +48,8 @@ class FakeResolver:
     def resolve(self, video_id):
         self.calls.append(video_id)
         if video_id == "boom":
-            return None, "video unavailable", False
-        return f"https://example.test/audio/{video_id}", "", True
+            return None, "video unavailable", True
+        return f"https://example.test/audio/{video_id}", "", False
 
 
 @pytest.fixture()
@@ -105,14 +105,15 @@ def test_resolve_returns_signed_url_shape_only(client):
     assert r.status_code == 200
     body = r.json()
     assert body["url"].endswith("/abc123")
-    assert body["cached"] is True
     assert body["error"] == ""
+    assert body["permanent"] is False
 
 
 def test_resolve_reports_error_without_url(client):
     body = client.post("/api/resolve", json={"videoId": "boom"}).json()
     assert body["url"] == ""
-    assert body["error"] == "video unavailable"
+    assert body["error"] == "YouTube reports this track as unavailable"
+    assert body["permanent"] is True
 
 
 def test_stream_redirect_follows_resolver(client):

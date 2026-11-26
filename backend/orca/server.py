@@ -77,6 +77,31 @@ DEFAULT_HOST = os.environ.get("ORCA_HOST", "127.0.0.1")
 DEFAULT_PORT = int(os.environ.get("ORCA_PORT", "8765"))
 
 
+def _friendly_stream_error(error: str) -> str:
+    """Collapse raw yt-dlp dumps into one human-readable sentence.
+
+    The web client shows this verbatim in the notice bar, so the bot-check
+    text (three paragraphs of traceback in yt-dlp) must arrive as one line
+    that also tells the user the cause instead of 'playback failed'.
+    """
+    text = (error or "").strip()
+    if not text:
+        return ""
+    lowered = text.lower()
+    if "not a bot" in lowered:
+        return "YouTube is asking the server to sign in (bot check); streaming is blocked for now"
+    if "confirm your age" in lowered or "age-restricted" in lowered:
+        return "YouTube restricts this track to signed-in accounts"
+    if "video unavailable" in lowered or "video is unavailable" in lowered:
+        return "YouTube reports this track as unavailable"
+    if "private video" in lowered:
+        return "this video is private"
+    if "members-only" in lowered:
+        return "this video is members-only"
+    first = text.splitlines()[0].strip()
+    return first[:240]
+
+
 # --------------------------------------------------------------- singletons
 _catalog: Optional[CatalogSource] = None
 _resolver: Optional[StreamResolver] = None
@@ -345,13 +370,19 @@ def create_app() -> FastAPI:
     ) -> ResolveResponse:
         video_id = (body.video_id or "").strip()
         if not video_id:
-            return ResolveResponse(url="", error="Empty videoId")
+            return ResolveResponse(url="", error="Empty videoId", permanent=True)
         try:
-            url, err, cache_hit = resolver.resolve(video_id)
+            url, err, permanent = resolver.resolve(video_id)
         except Exception as exc:  # noqa: BLE001
             log.error("resolve failed for %r", video_id)
-            return ResolveResponse(url="", error=str(exc))
-        return ResolveResponse(url=url or "", cached=cache_hit, error=err or "")
+            return ResolveResponse(
+                url="", error=_friendly_stream_error(str(exc)), permanent=False
+            )
+        return ResolveResponse(
+            url=url or "",
+            error=_friendly_stream_error(err),
+            permanent=permanent,
+        )
 
     @app.get("/api/stream/{video_id}")
     def stream_redirect(
