@@ -26,6 +26,13 @@ from .stream import (
     ytdlp_age_days,
     ytdlp_version,
 )
+from .remote import (
+    COBALT_DEFAULT,
+    INVIDIOUS_DEFAULT,
+    PIPES_DEFAULT,
+    _instances,
+    enabled as remote_enabled,
+)
 
 LOG_FILENAME = "orca.log"
 
@@ -116,6 +123,15 @@ def collect() -> List[str]:
         f"stream cache : {STREAM_CACHE_TTL_S}s TTL",
         f"yt cookies    : {'configured' if _cookie_options() else 'not configured (ORCA_YT_COOKIE)'}",
         f"yt pot provider: {'configured' if _pot_options() else 'not configured (ORCA_POT_BASE_URL)'}",
+        "remote sources: "
+        + (
+            "off" if not remote_enabled() else
+            "on (piped:{}, invidious:{}, cobalt:{})".format(
+                len(_instances("ORCA_PIPED_INSTANCES", PIPES_DEFAULT)),
+                len(_instances("ORCA_INVIDIOUS_INSTANCES", INVIDIOUS_DEFAULT)),
+                len(_instances("ORCA_COBALT_INSTANCES", COBALT_DEFAULT)),
+            )
+        ),
         f"yt clients     : {';'.join(','.join(p[0]) for p in _client_profiles())}",
         f"stream test    : {_stream_self_test()}",
         f"ffmpeg       : {_ffmpeg_version()}",

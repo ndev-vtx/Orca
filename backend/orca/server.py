@@ -112,8 +112,8 @@ def _friendly_stream_error(error: str) -> str:
         return "YouTube restricts this track to signed-in accounts"
     if "requested format is not available" in lowered:
         return (
-            "YouTube is gating this track's audio streams; deploy the bgutil "
-            "PO-token provider and set ORCA_POT_BASE_URL to fix it"
+            "YouTube is gating this track's audio streams and the public "
+            "mirrors had no copy either; try again later or run Orca locally"
         )
     if "video unavailable" in lowered or "video is unavailable" in lowered:
         return "YouTube reports this track as unavailable"

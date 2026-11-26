@@ -148,7 +148,33 @@ Check `https://<your-app>.vercel.app/api/doctor` afterwards:
 clients per profile). Cookie sessions automatically fetch the watch page
 (only pageless extraction skips it).
 
-### PO tokens: the second half of the fix
+### Zero-extra-server sourcing: public mirrors (default on)
+
+Hosted deployments additionally resolve streams through public **Piped /
+Invidious / Cobalt** instances before touching yt-dlp (see
+`backend/orca/remote.py`). These instances resolve the track on their own
+egress and proxy the bytes themselves, so the URL they hand out plays from
+**any** client IP — no token server, no cookies required in many cases.
+Every candidate URL is validated with a ranged GET before being returned.
+
+If the server layer comes up empty, the **browser itself** asks the same
+instances directly (`frontend/src/services/instances.ts`): the request
+comes from the listener's own connection, which YouTube never bot-checks.
+
+Optional environment overrides:
+
+- `ORCA_REMOTE_SOURCES=off` — disable the mirror layer entirely
+- `ORCA_PIPED_INSTANCES`, `ORCA_INVIDIOUS_INSTANCES`, `ORCA_COBALT_INSTANCES`
+  — comma-separated instance base URLs (order = preference)
+
+Public instances are community-run: performance varies and no instance is an
+SLA. When a track sometimes fails to load, appending more instances via the
+env vars is the whole maintenance story. The yt-dlp ladder (cookies,
+`ORCA_YTDLP_CLIENTS`, optional `ORCA_POT_BASE_URL` PO-token provider) stays
+as the fallback layer and is what works on residential connections such as a
+locally run desktop container.
+
+### Legacy PO-token provider details
 
 Even with cookies, YouTube increasingly **gates audio-only formats behind
 proof-of-origin (PO) tokens** on datacenter IPs — you'll see "Requested format

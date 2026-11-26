@@ -1,7 +1,10 @@
 """
 stream.py
-Resolves a track id (or a pasted link) into a direct HTTPS audio stream with
-yt-dlp. Nothing is ever written to disk — we only read the resolved URL.
+Resolves a track id (or a pasted link) into a direct HTTPS audio stream.
+Two sourcing layers, in order: public Piped/Invidious/Cobalt mirrors (see
+remote.py — their URLs play from any client IP, which is what hosted
+deployments need) and yt-dlp itself with the player-profile ladder. Nothing
+is ever written to disk — we only read the resolved URL.
 """
 
 from __future__ import annotations
@@ -479,6 +482,20 @@ class StreamResolver:
         if cached is not None:
             log.debug("stream cache hit for %s", video_id)
             return cached, "", False
+
+        # 3. Public mirror ladder — datacenter-proof, browser-playable URLs
+        try:
+            from .remote import enabled as remote_enabled
+            from .remote import fetch_remote_stream
+
+            if remote_enabled():
+                remote_url, remote_via = fetch_remote_stream(video_id)
+                if remote_url:
+                    log.info("stream resolved for %s via public mirror (%s)", video_id, remote_via)
+                    self.cache.put(video_id, remote_url)
+                    return remote_url, "", False
+        except ImportError:  # pragma: no cover - remote module always ships
+            pass
 
         try:
             info = self._probe(video_id)
