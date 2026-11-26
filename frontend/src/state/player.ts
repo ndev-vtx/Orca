@@ -6,18 +6,16 @@
  * budget, previous-restarts-before-backstep, repeat modes, shuffle upcoming,
  * history reporting and MediaSession metadata.
  *
- * Stream resolution is delegated to the Orca FastAPI backend and now goes
- * resolve-first: startLoad asks POST /api/resolve for the signed URL (or the
- * real failure reason + whether it is permanent) before touching the media
- * element. If the browser cannot play the direct signed URL — it is bound to
- * the server's egress IP, so on hosts like Vercel the browser gets a 403 —
- * the store retries a single time per track through /api/stream/proxy, which
- * relays the bytes and works from any client address. If both server paths
- * are refused, the browser itself asks public Piped/Invidious instances (see
- * services/instances.ts) — its own connection is never bot-checked.
+ * Primary playback is the official YouTube IFrame Player (see
+ * services/audioEngine.ts): it streams from the listener's own browser, so
+ * hosted deployments never touch a datacenter-blocked extraction path. If
+ * that sink refuses a track, the store walks the legacy chain once per
+ * track: backend resolve (the normal path when Orca runs locally) →
+ * /api/stream/proxy relay → public Piped/Invidious mirrors fetched directly
+ * from the browser.
  */
 import { create } from "zustand";
-import { api, ApiError } from "../services/api";
+import { api } from "../services/api";
 import { audioEngine, type EngineEvent } from "../services/audioEngine";
 import { resolveFromBrowser } from "../services/instances";
 import {
@@ -124,6 +122,7 @@ let advanceAfterRadio = false;
 let historyReportedId: string | null = null;
 const proxyTried = new Set<string>();
 const browserTried = new Set<string>();
+const backendTried = new Set<string>();
 
 export const usePlayerStore = create<PlaybackState>((set, get) => {
   function announce(message: string): void {
@@ -159,6 +158,31 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
     announce("retrying through the Orca proxy");
     audioEngine.resumeAt(proxyStreamUrl(song), song.videoId, atMs);
     return true;
+  }
+
+  /*
+   * Fallback chain after the YouTube IFrame sink refuses a track (embedding
+   * disabled, player failure). First the Orca backend — the normal path for
+   * a locally run instance — then the server proxy, then public mirrors
+   * fetched from the browser itself.
+   */
+  async function openLegacy(song: SongDto, atMs: number): Promise<void> {
+    try {
+      const res = await api.resolveStream(song.videoId);
+      if (loadedId !== song.videoId) return;
+      if (res.url && !res.error) {
+        switching = true;
+        set({ loading: true, lastError: "" });
+        audioEngine.resumeAt(res.url, song.videoId, atMs);
+        return;
+      }
+    } catch {
+      // backend unreachable or refused — continue down the chain
+    }
+    const back = Math.max(0, atMs - 1500);
+    if (tryProxyRetry(song, back)) return;
+    if (loadViaBrowser(song, back)) return;
+    failTrack(song, "no playable stream — player, server and mirrors all refused", false);
   }
 
   function loadViaBrowser(song: SongDto, atMs: number): boolean {
@@ -240,6 +264,12 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
           ? state.queue[state.cursor] ?? null
           : state.current;
         if (!song || loadedId !== song.videoId) break;
+        if (!backendTried.has(song.videoId)) {
+          backendTried.add(song.videoId);
+          announce("trying the Orca server");
+          void openLegacy(song, Math.max(0, event.atMs - 1500));
+          break;
+        }
         if (tryProxyRetry(song, Math.max(0, event.atMs - 1500))) break;
         if (loadViaBrowser(song, Math.max(0, event.atMs - 1500))) break;
         failTrack(song, event.message, false);
@@ -248,31 +278,11 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
     }
   }
 
-  async function openStream(song: SongDto, resumeAtMs: number): Promise<void> {
-    let res;
-    try {
-      res = await api.resolveStream(song.videoId);
-    } catch (exc) {
-      if (loadedId !== song.videoId) return;
-      const message = exc instanceof ApiError ? exc.message : "could not reach the Orca backend";
-      if (loadViaBrowser(song, resumeAtMs)) return;
-      failTrack(song, message, false);
-      return;
-    }
-    if (loadedId !== song.videoId) return;
-    if (res.error || !res.url) {
-      if (loadViaBrowser(song, resumeAtMs)) return;
-      failTrack(song, res.error || "the server returned no audio stream", res.permanent);
-      return;
-    }
-    switching = true;
-    audioEngine.load(res.url, song.videoId, resumeAtMs);
-  }
-
   function startLoad(song: SongDto, resumeAtMs: number): void {
     deadTracks.delete(song.videoId);
     proxyTried.delete(song.videoId);
     browserTried.delete(song.videoId);
+    backendTried.delete(song.videoId);
     loadedId = song.videoId;
     switching = true;
     historyReportedId = null;
@@ -284,7 +294,7 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
       lastError: "",
     });
     updateMediaSession(song);
-    void openStream(song, resumeAtMs);
+    audioEngine.loadTrack(song.videoId, song.videoId, resumeAtMs);
     if (get().lyricsOpen) void get().ensureLyrics();
   }
 

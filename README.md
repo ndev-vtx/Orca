@@ -148,6 +148,20 @@ Check `https://<your-app>.vercel.app/api/doctor` afterwards:
 clients per profile). Cookie sessions automatically fetch the watch page
 (only pageless extraction skips it).
 
+### How playback works on hosted deployments
+
+Primary playback is the **official YouTube IFrame Player API**, run inside
+the listener's browser (`frontend/src/services/audioEngine.ts`). The stream
+is served by YouTube itself from the user's own connection, so datacenter
+bot checks, PO-token gates and IP-locked signed URLs never apply — no
+cookies, no token server, no mirrors required.
+
+If a track cannot be embedded (uploader disabled embedding, player failure),
+the client walks a fallback chain once per track: the Orca backend's yt-dlp
+resolver (the normal path when Orca runs locally, where residential IPs are
+welcome) → the server's stream proxy → public Piped/Invidious instances
+fetched directly from the browser.
+
 ### Zero-extra-server sourcing: public mirrors (default on)
 
 Hosted deployments additionally resolve streams through public **Piped /
