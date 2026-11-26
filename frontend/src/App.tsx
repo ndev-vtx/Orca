@@ -23,6 +23,7 @@ import "./styles/bar.css";
 import "./styles/pages.css";
 import "./styles/lyrics.css";
 import "./styles/mobile.css";
+import "./styles/miniplayer.css";
 
 export default function App() {
   const loadLibrary = useLibraryStore((s) => s.loadLibrary);

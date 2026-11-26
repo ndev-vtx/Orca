@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import {
   HeartIcon,
@@ -19,8 +20,8 @@ import {
 import { MusicTile } from "./Shared";
 import { formatTime, usePlayerStore } from "../state/player";
 import { useLibraryStore } from "../state/libraryStore";
-import { activePip, canDocumentPip, openPip, setPipTitle } from "../services/pip";
-import { audioEngine } from "../services/audioEngine";
+import { activePip, canDocumentPip, openPipWindow } from "../services/pip";
+import MiniPlayer from "./MiniPlayer";
 
 type SliderKind = "seek" | "volume";
 
@@ -58,7 +59,9 @@ export default function NowPlayingBar() {
   const lyricsOpen = usePlayerStore((s) => s.lyricsOpen);
   const toggleLyrics = usePlayerStore((s) => s.toggleLyrics);
   const notify = usePlayerStore((s) => s.notify);
-  const [pipOpen, setPipOpen] = useState(false);
+  const [pipWin, setPipWin] = useState<Window | null>(null);
+  const [fallbackOpen, setFallbackOpen] = useState(false);
+  const pipOpen = pipWin !== null || fallbackOpen;
 
   const saved = useLibraryStore((s) =>
     current ? s.savedIds.has(current.videoId) : false,
@@ -101,52 +104,30 @@ export default function NowPlayingBar() {
     setMuted(!muted);
   };
 
-  useEffect(() => {
-    if (current) setPipTitle(current.title, current.artist || "Unknown artist");
-  }, [current]);
-
   const togglePip = async () => {
+    if (fallbackOpen) {
+      setFallbackOpen(false);
+      return;
+    }
     const open = activePip();
     if (open) {
       open.close();
-      return;
-    }
-    if (!canDocumentPip()) {
-      notify("Picture-in-Picture isn't supported in this browser");
       return;
     }
     if (!current) {
       notify("Play something first");
       return;
     }
-    const resumeMs = Math.max(0, usePlayerStore.getState().positionMs - 1500);
-    const host = audioEngine.attachSurface(null);
-    if (!host) {
-      notify("Picture-in-Picture isn't available for this track");
+    if (canDocumentPip()) {
+      const win = await openPipWindow(() => setPipWin(null));
+      if (win) {
+        setPipWin(win);
+      } else {
+        notify("Picture-in-Picture could not be opened");
+      }
       return;
     }
-    try {
-      const handle = await openPip(host, () => {
-        setPipOpen(false);
-        audioEngine.attachSurface(null);
-        const song = usePlayerStore.getState().current;
-        if (song) {
-          audioEngine.loadTrack(
-            song.videoId,
-            song.videoId,
-            usePlayerStore.getState().positionMs,
-          );
-        }
-      });
-      if (handle) {
-        setPipOpen(true);
-        setPipTitle(current.title, current.artist || "Unknown artist");
-        audioEngine.loadTrack(current.videoId, current.videoId, resumeMs);
-      }
-    } catch {
-      audioEngine.attachSurface(null);
-      notify("Picture-in-Picture could not be opened");
-    }
+    setFallbackOpen(true);
   };
 
   return (
@@ -312,6 +293,12 @@ export default function NowPlayingBar() {
           <div className="bar__thumb" style={{ left: `${volumeShown}%` }} />
         </div>
       </div>
+      {pipWin &&
+        createPortal(
+          <MiniPlayer variant="pip" onClose={() => activePip()?.close()} />,
+          pipWin.document.body,
+        )}
+      {fallbackOpen && <MiniPlayer variant="overlay" onClose={() => setFallbackOpen(false)} />}
     </footer>
   );
 }
