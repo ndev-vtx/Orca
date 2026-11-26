@@ -116,6 +116,14 @@ def test_resolve_reports_error_without_url(client):
     assert body["permanent"] is True
 
 
+def test_resolve_error_carries_extraction_trail(client):
+    import orca.stream as stream_mod
+
+    stream_mod.DEBUG_TAIL.append("[orca] profile web_music: failed (Requested format is not available)")
+    body = client.post("/api/resolve", json={"videoId": "boom"}).json()
+    assert any("[orca] profile web_music" in line for line in body["trail"])
+
+
 def test_stream_redirect_follows_resolver(client):
     r = client.get("/api/stream/abc123", follow_redirects=False)
     assert r.status_code == 302

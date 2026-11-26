@@ -36,6 +36,7 @@ class ResolveResponse(BaseModel):
     format: str = "audio/mp4"
     error: str = ""
     permanent: bool = False
+    trail: List[str] = []
 
 
 class ResolveProxyResponse(BaseModel):

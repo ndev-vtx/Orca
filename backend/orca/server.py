@@ -77,6 +77,20 @@ DEFAULT_HOST = os.environ.get("ORCA_HOST", "127.0.0.1")
 DEFAULT_PORT = int(os.environ.get("ORCA_PORT", "8765"))
 
 
+def _resolve_trail() -> List[str]:
+    """Decision lines from this instance's latest extraction attempts."""
+    from .stream import DEBUG_TAIL
+
+    keep = (
+        "[orca]",
+        "playability status",
+        "Skipping client",
+        "PO Token",
+        "no video formats",
+    )
+    return [line for line in list(DEBUG_TAIL)[-120:] if any(k in line for k in keep)][-20:]
+
+
 def _friendly_stream_error(error: str) -> str:
     """Collapse raw yt-dlp dumps into one human-readable sentence.
 
@@ -379,12 +393,16 @@ def create_app() -> FastAPI:
         except Exception as exc:  # noqa: BLE001
             log.error("resolve failed for %r", video_id)
             return ResolveResponse(
-                url="", error=_friendly_stream_error(str(exc)), permanent=False
+                url="",
+                error=_friendly_stream_error(str(exc)),
+                permanent=False,
+                trail=_resolve_trail(),
             )
         return ResolveResponse(
             url=url or "",
             error=_friendly_stream_error(err),
             permanent=permanent,
+            trail=_resolve_trail(),
         )
 
     @app.get("/api/stream/{video_id}")
