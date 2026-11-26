@@ -81,7 +81,7 @@ def _ffmpeg_version() -> str:
     return exe
 
 
-def _debug_tail(limit: int = 30) -> List[str]:
+def _debug_tail(limit: int = 90) -> List[str]:
     return [f"  {line}" for line in list(DEBUG_TAIL)[-limit:]]
 
 

@@ -222,7 +222,7 @@ def _cookie_options() -> Dict[str, Any]:
 # Ring buffer of yt-dlp's own verdicts (bot checks, dropped formats, client
 # fallbacks) so /api/doctor can show WHY extraction failed on a remote host.
 # Only warnings, errors and key decisions are kept; signed-URLs are scrubbed.
-DEBUG_TAIL: Deque[str] = deque(maxlen=150)
+DEBUG_TAIL: Deque[str] = deque(maxlen=500)
 _DEBUG_URL = re.compile(r"(googlevideo\.com/videoplayback\?)[^\s\"']*")
 
 
