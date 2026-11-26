@@ -44,7 +44,13 @@ def _stream_self_test() -> str:
     except Exception as exc:  # noqa: BLE001
         return f"FAILED: resolver crashed: {exc}"
     if url:
-        return "OK (signed url issued)"
+        client = next(
+            (line.split("streaming client: ")[-1].strip()
+             for line in DEBUG_TAIL if "streaming client: " in line),
+            None,
+        )
+        suffix = f" via {client}" if client else ""
+        return f"OK (signed url issued){suffix}"
     reason = err or "no url and no error message"
     return f"FAILED: {reason}"
 
@@ -108,7 +114,7 @@ def collect() -> List[str]:
         f"audio format : {BASE_OPTIONS['format']}",
         f"stream cache : {STREAM_CACHE_TTL_S}s TTL",
         f"yt cookies    : {'configured' if _cookie_options() else 'not configured (ORCA_YT_COOKIE)'}",
-        f"yt clients     : {';'.join(','.join(p) for p in _client_profiles())}",
+        f"yt clients     : {';'.join(','.join(p[0]) for p in _client_profiles())}",
         f"stream test    : {_stream_self_test()}",
         f"ffmpeg       : {_ffmpeg_version()}",
         f"js runtime    : {_js_runtimes()}",

@@ -31,8 +31,6 @@ except ImportError:
 
 log = logging.getLogger(__name__)
 
-WATCH_URL = "https://www.youtube.com/watch?v={0}"
-
 # Conditions yt-dlp cannot recover from by trying again: the extractor needs an
 # authenticated session, so a retry returns the same refusal seconds later.
 PERMANENT_FAILURE_MARKERS = (
@@ -171,15 +169,39 @@ FORMAT_STUDIO = "bestaudio[acodec=flac]/bestaudio[format_id=251]/bestaudio[ext=w
 # some player clients are still served without a PO token, so rotating them
 # gives hosted deployments a fighting chance before the user configures a
 # session cookie, which bypasses the check outright.
-CLIENT_PROFILES: Tuple[Tuple[str, ...], ...] = (
-    ("android", "ios"),
-    ("tv",),
-    ("android_vr",),
+WATCH_URL = "https://www.youtube.com/watch?v={0}"
+MUSIC_URL = "https://music.youtube.com/watch?v={0}"
+
+# Each entry: (player clients, watch-url template). The web_music client on
+# music.youtube.com still serves formats for authenticated sessions that the
+# www clients refuse on datacenter hosting (yt-dlp #17389), so it is part of
+# the ladder rather than an exotic fallback.
+CLIENT_PROFILES: Tuple[Tuple[Tuple[str, ...], str], ...] = (
+    (("android", "ios"), WATCH_URL),
+    (("tv",), WATCH_URL),
+    (("web_music",), MUSIC_URL),
+    (("android",), MUSIC_URL),
+    (("android_vr",), WATCH_URL),
 )
 
 
 def _is_bot_check(exc_text: str) -> bool:
     return "not a bot" in exc_text.lower()
+
+
+def _client_profiles() -> Tuple[Tuple[Tuple[str, ...], str], ...]:
+    """Profiles from ORCA_YTDLP_CLIENTS (';' separates profiles, ',' clients)."""
+    raw = os.environ.get("ORCA_YTDLP_CLIENTS", "").strip()
+    if not raw:
+        return CLIENT_PROFILES
+    profiles = []
+    for part in raw.split(";"):
+        clients = tuple(c.strip() for c in part.split(",") if c.strip())
+        if not clients:
+            continue
+        template = MUSIC_URL if any("music" in c for c in clients) else WATCH_URL
+        profiles.append((clients, template))
+    return tuple(profiles) or CLIENT_PROFILES
 
 
 def _client_profiles() -> Tuple[Tuple[str, ...], ...]:
@@ -340,10 +362,11 @@ class StreamResolver:
             self.options["format"] = FORMAT_STANDARD
         log.info("Stream resolver audio quality set to %s (%s)", mode, self.options["format"])
 
-    def _probe(self, target: str, max_attempts: int = 2) -> Dict[str, Any]:
+    def _probe(self, video_id: str, max_attempts: int = 2) -> Dict[str, Any]:
         """Extract info from yt-dlp, cycling player profiles on bot checks."""
         last_exc: Optional[Exception] = None
-        for profile in _client_profiles():
+        for profile, url_template in _client_profiles():
+            target = url_template.format(video_id)
             options = dict(self.options)
             options["extractor_args"] = {
                 "youtube": {
@@ -356,6 +379,9 @@ class StreamResolver:
                     with yt_dlp.YoutubeDL(options) as ydl:
                         data = ydl.extract_info(target, download=False)
                         if isinstance(data, dict):
+                            data["_orca_profile"] = "/".join(profile) + (
+                                " @music" if "music." in url_template else ""
+                            )
                             return data
                         raise RuntimeError("unexpected response structure from extractor")
                 except Exception as exc:
@@ -414,9 +440,8 @@ class StreamResolver:
             log.debug("stream cache hit for %s", video_id)
             return cached, "", False
 
-        target = WATCH_URL.format(video_id)
         try:
-            info = self._probe(target)
+            info = self._probe(video_id)
         except Exception as exc:
             log.error("stream resolve failed for %s: %s", video_id, exc)
             return None, str(exc), _is_permanent_failure(exc)
@@ -424,6 +449,12 @@ class StreamResolver:
         url = self._pick_url(info)
         if not url:
             return None, "no playable audio stream was returned", False
+        DEBUG_TAIL.append(
+            _scrub(
+                f"[orca] resolve {video_id}: OK via {info.get('_orca_profile', 'default')} "
+                f"format={info.get('format_id')} ext={info.get('ext')} abr={info.get('abr')}"
+            )
+        )
         self.cache.put(video_id, url)
         return url, "", False
 
