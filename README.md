@@ -89,3 +89,28 @@ uvicorn orca.server:app --host 0.0.0.0 --port 8765
 
 The static mount is opt-in: it activates when `frontend/dist` exists
 (or set `ORCA_STATIC_DIR`), and never shadows `/api` or `/ws`.
+
+## Deploying to Vercel (or any serverless host)
+
+The repo is Vercel-ready: `vercel.json` builds the frontend and runs the whole
+FastAPI backend as a serverless function. Push and import the repo as a single
+project — no extra setup on the Vercel side.
+
+**YouTube bot check on datacenter IPs:** YouTube refuses *unsigned* stream
+extraction from cloud providers ("Sign in to confirm you're not a bot"). Orca
+rotates yt-dlp player profiles to dodge it, and the reliable fix is a signed-in
+session cookie:
+
+1. Use a throwaway Google/YouTube account (the cookie will be attached to it).
+2. In a browser logged in **only** as that account, install a cookies export
+   extension (e.g. "Get cookies.txt LOCALLY"), open `youtube.com`, and export
+   in **Netscape format**.
+3. In Vercel → Project → Settings → Environment Variables, add
+   `ORCA_YT_COOKIE` with the whole file content as the value (multi-line is
+   fine; escaped `\n` sequences also work), then redeploy.
+
+Verify with `GET /api/doctor` — the `yt cookies` line must say `configured`.
+
+Note that serverless storage is ephemeral: favorites, history and playlists
+reset when the instance recycles. Point `ORCA_DATA_DIR` at a persistent disk
+host, or mount one, for durable library data.

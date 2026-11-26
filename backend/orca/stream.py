@@ -9,8 +9,11 @@ from __future__ import annotations
 import datetime
 import html
 import logging
+import os
+import tempfile
 import threading
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import yt_dlp
@@ -161,6 +164,46 @@ class StreamCache:
 FORMAT_STANDARD = "bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]/bestaudio/best"
 FORMAT_STUDIO = "bestaudio[acodec=flac]/bestaudio[format_id=251]/bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best"
 
+# Client profiles tried in order when YouTube refuses the previous one. The
+# bot check is IP-reputation based (datacenter hosts like Vercel get flagged);
+# some player clients are still served without a PO token, so rotating them
+# gives hosted deployments a fighting chance before the user configures a
+# session cookie, which bypasses the check outright.
+CLIENT_PROFILES: Tuple[Tuple[str, ...], ...] = (
+    ("android", "ios"),
+    ("tv",),
+    ("android_vr",),
+)
+
+
+def _is_bot_check(exc_text: str) -> bool:
+    return "not a bot" in exc_text.lower()
+
+
+def _cookie_options() -> Dict[str, Any]:
+    """yt-dlp cookie options from ORCA_YT_COOKIE (file or inline content).
+
+    Inline content may carry real newlines or escaped \\n sequences; it is
+    materialized into a temp file because yt-dlp requires a cookiefile path.
+    A signed-in session clears the 'sign in to confirm you're not a bot' gate
+    that otherwise blocks datacenter deployments (Vercel/Render/Railway).
+    """
+    inline = os.environ.get("ORCA_YT_COOKIE", "").strip()
+    if inline:
+        if "\\n" in inline and "\n" not in inline:
+            inline = inline.replace("\\n", "\n")
+        if not inline.startswith("#"):
+            inline = "# Netscape HTTP Cookie File\n" + inline
+        fd, path = tempfile.mkstemp(prefix="orca-yt-cookie-", suffix=".txt")
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(inline)
+        return {"cookiefile": path}
+    file_path = os.environ.get("ORCA_YT_COOKIE_FILE", "").strip()
+    if file_path and Path(file_path).is_file():
+        return {"cookiefile": file_path}
+    return {}
+
+
 BASE_OPTIONS: Dict[str, Any] = {
     "format": FORMAT_STANDARD,
     "quiet": True,
@@ -190,11 +233,12 @@ class StreamResolver:
         cache: Optional[StreamCache] = None,
         disk_cache: Optional[AudioDiskCache] = None,
     ) -> None:
-        self.options = dict(BASE_OPTIONS)
+        self.options = {**BASE_OPTIONS, **_cookie_options()}
         if overrides:
             self.options.update(overrides)
         self.cache = cache if cache is not None else StreamCache()
         self.disk_cache = disk_cache
+        self.cookie_configured = "cookiefile" in self.options
         check_ytdlp_freshness()
 
     def set_quality_mode(self, mode: str) -> None:
@@ -205,36 +249,48 @@ class StreamResolver:
             self.options["format"] = FORMAT_STANDARD
         log.info("Stream resolver audio quality set to %s (%s)", mode, self.options["format"])
 
-    def _probe(self, target: str, max_attempts: int = 3) -> Dict[str, Any]:
-        """Extract info from yt-dlp with retries and exponential backoff."""
+    def _probe(self, target: str, max_attempts: int = 2) -> Dict[str, Any]:
+        """Extract info from yt-dlp, cycling player profiles on bot checks."""
         last_exc: Optional[Exception] = None
-        for attempt in range(1, max_attempts + 1):
-            try:
-                with yt_dlp.YoutubeDL(self.options) as ydl:
-                    data = ydl.extract_info(target, download=False)
-                    if isinstance(data, dict):
-                        return data
-                    raise RuntimeError("unexpected response structure from extractor")
-            except Exception as exc:
-                last_exc = exc
-                # Age gate and bot check are not transient — retrying just burns
-                # ~10s of dead air before failing anyway. Bail on the first hit.
-                if _is_permanent_failure(exc):
-                    log.warning("stream probe %r blocked permanently: %s", target, exc)
-                    raise
-                if attempt < max_attempts:
-                    sleep_sec = 0.5 * (2 ** (attempt - 1))
-                    log.warning(
-                        "stream probe %r attempt %d/%d failed: %s. Retrying in %.1fs...",
-                        target,
-                        attempt,
-                        max_attempts,
-                        exc,
-                        sleep_sec,
-                    )
-                    time.sleep(sleep_sec)
-                else:
-                    log.error("stream probe %r failed after %d attempts: %s", target, max_attempts, exc)
+        for profile in CLIENT_PROFILES:
+            options = dict(self.options)
+            options["extractor_args"] = {
+                "youtube": {
+                    "player_client": list(profile),
+                    "player_skip": ["webpage", "configs", "js"],
+                }
+            }
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    with yt_dlp.YoutubeDL(options) as ydl:
+                        data = ydl.extract_info(target, download=False)
+                        if isinstance(data, dict):
+                            return data
+                        raise RuntimeError("unexpected response structure from extractor")
+                except Exception as exc:
+                    last_exc = exc
+                    if _is_permanent_failure(exc):
+                        if _is_bot_check(str(exc)):
+                            log.warning(
+                                "stream probe %r bot-checked on client %s; trying the next profile",
+                                target, "/".join(profile),
+                            )
+                            break
+                        log.warning("stream probe %r blocked permanently: %s", target, exc)
+                        raise
+                    if attempt < max_attempts:
+                        sleep_sec = 0.5 * (2 ** (attempt - 1))
+                        log.warning(
+                            "stream probe %r attempt %d/%d failed: %s. Retrying in %.1fs...",
+                            target,
+                            attempt,
+                            max_attempts,
+                            exc,
+                            sleep_sec,
+                        )
+                        time.sleep(sleep_sec)
+                    else:
+                        log.error("stream probe %r failed after %d attempts: %s", target, max_attempts, exc)
         if last_exc is not None:
             raise last_exc
         return {}

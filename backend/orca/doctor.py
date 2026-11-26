@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import List
 
 from .config import APP_NAME, STREAM_CACHE_TTL_S, YTDLP_MAX_AGE_DAYS
-from .stream import BASE_OPTIONS, ytdlp_age_days, ytdlp_version
+from .stream import BASE_OPTIONS, _cookie_options, ytdlp_age_days, ytdlp_version
 
 LOG_FILENAME = "orca.log"
 
@@ -75,6 +75,7 @@ def collect() -> List[str]:
         f"yt-dlp       : {version} ({age_line})",
         f"audio format : {BASE_OPTIONS['format']}",
         f"stream cache : {STREAM_CACHE_TTL_S}s TTL",
+        f"yt cookies    : {'configured' if _cookie_options() else 'not configured (ORCA_YT_COOKIE)'}",
         f"ffmpeg       : {_ffmpeg_version()}",
         f"log          : {log_path()}",
     ]

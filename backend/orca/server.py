@@ -89,7 +89,10 @@ def _friendly_stream_error(error: str) -> str:
         return ""
     lowered = text.lower()
     if "not a bot" in lowered:
-        return "YouTube is asking the server to sign in (bot check); streaming is blocked for now"
+        return (
+            "YouTube is bot-checking this server; "
+            "set the ORCA_YT_COOKIE environment variable to fix it"
+        )
     if "confirm your age" in lowered or "age-restricted" in lowered:
         return "YouTube restricts this track to signed-in accounts"
     if "video unavailable" in lowered or "video is unavailable" in lowered:
