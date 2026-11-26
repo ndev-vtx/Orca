@@ -3,6 +3,10 @@ ytmusicapi>=1.7.0,<2.0.0
 # nightly builds (e.g. the tv_downgraded 'page needs to be reloaded' regression
 # that hits every cookie-authenticated session). Track nightly here.
 yt-dlp @ https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp.tar.gz
+## bgutil PO-token provider plugin: on datacenter hosts (Vercel) YouTube
+## gates audio-only formats behind proof-of-origin tokens; this plugin mints
+## them via the HTTP provider (ORCA_POT_BASE_URL -> its /get_pot endpoint).
+bgutil-ytdlp-pot-provider>=1.2.0
 requests>=2.31.0,<3.0.0
 mutagen>=1.47.0,<2.0.0
 fastapi>=0.115.0

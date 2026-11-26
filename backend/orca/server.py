@@ -110,6 +110,11 @@ def _friendly_stream_error(error: str) -> str:
         )
     if "confirm your age" in lowered or "age-restricted" in lowered:
         return "YouTube restricts this track to signed-in accounts"
+    if "requested format is not available" in lowered:
+        return (
+            "YouTube is gating this track's audio streams; deploy the bgutil "
+            "PO-token provider and set ORCA_POT_BASE_URL to fix it"
+        )
     if "video unavailable" in lowered or "video is unavailable" in lowered:
         return "YouTube reports this track as unavailable"
     if "private video" in lowered:

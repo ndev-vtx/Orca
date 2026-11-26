@@ -193,7 +193,11 @@ def _is_bot_check(exc_text: str) -> bool:
 
 
 def _client_profiles() -> Tuple[Tuple[Tuple[str, ...], str], ...]:
-    """Profiles from ORCA_YTDLP_CLIENTS (';' separates profiles, ',' clients)."""
+    """Profiles from ORCA_YTDLP_CLIENTS (';' separates profiles, ',' clients).
+
+    A profile containing a client with 'music' in its name is routed through
+    music.youtube.com; everything else uses the regular watch page.
+    """
     raw = os.environ.get("ORCA_YTDLP_CLIENTS", "").strip()
     if not raw:
         return CLIENT_PROFILES
@@ -207,17 +211,18 @@ def _client_profiles() -> Tuple[Tuple[Tuple[str, ...], str], ...]:
     return tuple(profiles) or CLIENT_PROFILES
 
 
-def _client_profiles() -> Tuple[Tuple[str, ...], ...]:
-    """Profiles from ORCA_YTDLP_CLIENTS (';' separates profiles, ',' clients)."""
-    raw = os.environ.get("ORCA_YTDLP_CLIENTS", "").strip()
-    if not raw:
-        return CLIENT_PROFILES
-    profiles = []
-    for part in raw.split(";"):
-        clients = tuple(c.strip() for c in part.split(",") if c.strip())
-        if clients:
-            profiles.append(clients)
-    return tuple(profiles) or CLIENT_PROFILES
+def _pot_options() -> Dict[str, Any]:
+    """bgutil PO-token provider wiring from ORCA_POT_BASE_URL.
+
+    Orca's datacenter hosts (Vercel et al.) get their audio-only formats
+    PO-token-gated by YouTube; the bgutil provider (itself deployed as a
+    Vercel function) mints the proof-of-origin tokens yt-dlp's web clients
+    need. See https://github.com/Brainicism/bgutil-ytdlp-pot-provider.
+    """
+    base = os.environ.get("ORCA_POT_BASE_URL", "").strip().rstrip("/")
+    if not base:
+        return {}
+    return {"extractor_args": {"youtubepot-bgutilhttp": {"base_url": [base]}}}
 
 
 def _cookie_options() -> Dict[str, Any]:
@@ -344,7 +349,12 @@ class StreamResolver:
         cache: Optional[StreamCache] = None,
         disk_cache: Optional[AudioDiskCache] = None,
     ) -> None:
-        self.options = {**BASE_OPTIONS, **_cookie_options(), **_debug_options()}
+        self.options = {
+            **BASE_OPTIONS,
+            **_cookie_options(),
+            **_pot_options(),
+            **_debug_options(),
+        }
         if overrides:
             self.options.update(overrides)
         self.cache = cache if cache is not None else StreamCache()
@@ -377,12 +387,14 @@ class StreamResolver:
         for profile, url_template in _client_profiles():
             target = url_template.format(video_id)
             options = dict(self.options)
-            options["extractor_args"] = {
-                "youtube": {
-                    "player_client": list(profile),
-                    "player_skip": list(self.player_skip),
-                }
+            # Merge, don't clobber: provider/extractor args set elsewhere
+            # (PO-token base_url) must survive every per-profile override.
+            args = {k: dict(v) for k, v in (self.options.get("extractor_args") or {}).items()}
+            args["youtube"] = {
+                "player_client": list(profile),
+                "player_skip": list(self.player_skip),
             }
+            options["extractor_args"] = args
             for attempt in range(1, max_attempts + 1):
                 try:
                     data = self._extract_once(target, options)

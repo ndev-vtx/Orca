@@ -22,6 +22,7 @@ from .stream import (
     StreamResolver,
     _client_profiles,
     _cookie_options,
+    _pot_options,
     ytdlp_age_days,
     ytdlp_version,
 )
@@ -114,6 +115,7 @@ def collect() -> List[str]:
         f"audio format : {BASE_OPTIONS['format']}",
         f"stream cache : {STREAM_CACHE_TTL_S}s TTL",
         f"yt cookies    : {'configured' if _cookie_options() else 'not configured (ORCA_YT_COOKIE)'}",
+        f"yt pot provider: {'configured' if _pot_options() else 'not configured (ORCA_POT_BASE_URL)'}",
         f"yt clients     : {';'.join(','.join(p[0]) for p in _client_profiles())}",
         f"stream test    : {_stream_self_test()}",
         f"ffmpeg       : {_ffmpeg_version()}",

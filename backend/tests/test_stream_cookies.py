@@ -54,3 +54,35 @@ def test_inline_cookie_accepts_escaped_newlines(monkeypatch):
     assert "\n" in written.replace("\\n", "")
     assert "\\n" not in written
     os.remove(options["cookiefile"])
+
+
+def test_pot_provider_env_unconfigured_is_empty(monkeypatch):
+    import orca.stream as stream_mod
+
+    monkeypatch.delenv("ORCA_POT_BASE_URL", raising=False)
+    assert stream_mod._pot_options() == {}
+
+
+def test_pot_provider_env_maps_to_extractor_args(monkeypatch):
+    import orca.stream as stream_mod
+
+    monkeypatch.setenv("ORCA_POT_BASE_URL", "https://pot.example.vercel.app/")
+    opts = stream_mod._pot_options()
+    assert opts["extractor_args"]["youtubepot-bgutilhttp"]["base_url"] == [
+        "https://pot.example.vercel.app"
+    ]
+
+
+def test_probe_keeps_provider_args_across_profile_overrides(monkeypatch):
+    """The bgutil base_url must survive _probe's per-profile extractor_args."""
+    import orca.stream as stream_mod
+
+    monkeypatch.setenv("ORCA_POT_BASE_URL", "https://pot.example.vercel.app")
+    resolver = stream_mod.StreamResolver()
+    assert (
+        resolver.options["extractor_args"]["youtubepot-bgutilhttp"]["base_url"]
+        == ["https://pot.example.vercel.app"]
+    )
+    args = {k: dict(v) for k, v in (resolver.options.get("extractor_args") or {}).items()}
+    args["youtube"] = {"player_client": ["mweb"], "player_skip": ["webpage"]}
+    assert "youtubepot-bgutilhttp" in args

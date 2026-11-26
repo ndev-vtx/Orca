@@ -148,6 +148,32 @@ Check `https://<your-app>.vercel.app/api/doctor` afterwards:
 clients per profile). Cookie sessions automatically fetch the watch page
 (only pageless extraction skips it).
 
+### PO tokens: the second half of the fix
+
+Even with cookies, YouTube increasingly **gates audio-only formats behind
+proof-of-origin (PO) tokens** on datacenter IPs — you'll see "Requested format
+is not available" or `UNPLAYABLE` for every profile in `/api/resolve`'s
+`trail`. The sanctioned fix is [bgutil-ytdlp-pot-provider](https://github.com/Brainicism/bgutil-ytdlp-pot-provider)
+(maintainer-endorsed in yt-dlp #17497: use a PO token provider + the `mweb`
+client). Orca already ships the yt-dlp plugin; it just needs a provider
+server:
+
+1. Import [FoxeiZ/bgutil-ytdlp-pot-vercal](https://github.com/FoxeiZ/bgutil-ytdlp-pot-vercal)
+   into Vercel as its **own project** (it is the bgutil server packaged for
+   Vercel; deploy with defaults).
+2. Note its URL, e.g. `https://your-pot-provider.vercel.app`.
+3. On the **Orca** project, add env var `ORCA_POT_BASE_URL` with that URL and
+   redeploy.
+4. Sanity-check the provider: `curl https://your-pot-provider.vercel.app/ping`
+   should answer with a version. (The endpoint is unauthenticated — fine for a
+   hobby deployment, but don't advertise the URL.)
+
+Cookies + PO tokens together is the combination that works on serverless:
+tokens prove the request's origin to YouTube's web clients, the cookie clears
+the login requirement that tokens alone cannot bypass on flagged IPs.
+Doctor now prints `yt pot provider : configured` when the wiring is picked up,
+and the `stream test` exercises token minting end to end.
+
 Note that serverless storage is ephemeral: favorites, history and playlists
 reset when the instance recycles. Point `ORCA_DATA_DIR` at a persistent disk
 host, or mount one, for durable library data.
