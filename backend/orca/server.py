@@ -85,10 +85,11 @@ def _resolve_trail() -> List[str]:
         "[orca]",
         "playability status",
         "Skipping client",
-        "PO Token",
+        "PO Token Providers",
         "no video formats",
+        "Requested format",
     )
-    return [line for line in list(DEBUG_TAIL)[-120:] if any(k in line for k in keep)][-20:]
+    return [line for line in list(DEBUG_TAIL) if any(k in line for k in keep)][-45:]
 
 
 def _friendly_stream_error(error: str) -> str:
