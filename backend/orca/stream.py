@@ -362,6 +362,12 @@ class StreamResolver:
             self.options["format"] = FORMAT_STANDARD
         log.info("Stream resolver audio quality set to %s (%s)", mode, self.options["format"])
 
+    @staticmethod
+    def _extract_once(target: str, options: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        with yt_dlp.YoutubeDL(options) as ydl:
+            data = ydl.extract_info(target, download=False)
+        return data if isinstance(data, dict) else None
+
     def _probe(self, video_id: str, max_attempts: int = 2) -> Dict[str, Any]:
         """Extract info from yt-dlp, cycling player profiles on bot checks."""
         last_exc: Optional[Exception] = None
@@ -376,15 +382,34 @@ class StreamResolver:
             }
             for attempt in range(1, max_attempts + 1):
                 try:
-                    with yt_dlp.YoutubeDL(options) as ydl:
-                        data = ydl.extract_info(target, download=False)
-                        if isinstance(data, dict):
-                            data["_orca_profile"] = "/".join(profile) + (
-                                " @music" if "music." in url_template else ""
-                            )
-                            return data
-                        raise RuntimeError("unexpected response structure from extractor")
+                    data = self._extract_once(target, options)
+                    if data is not None:
+                        data["_orca_profile"] = "/".join(profile) + (
+                            " @music" if "music." in url_template else ""
+                        )
+                        return data
+                    raise RuntimeError("unexpected response structure from extractor")
                 except Exception as exc:
+                    selector_blocked = "requested format is not available" in str(exc).lower()
+                    if selector_blocked:
+                        # The client served formats the strict audio selector
+                        # cannot match (audio-only itags gated away, e.g. SABR
+                        # enforcement) — retry permissively to see what remains.
+                        DEBUG_TAIL.append(
+                            _scrub(f"[orca] profile {'/'.join(profile)}: strict "
+                                   "selector matched nothing; retrying with bestaudio*/b*")
+                        )
+                        wide = {**options, "format": "bestaudio*/b*"}
+                        try:
+                            data = self._extract_once(target, wide)
+                            if data is not None:
+                                data["_orca_profile"] = "/".join(profile) + (
+                                    " @music" if "music." in url_template else ""
+                                )
+                                data["_orca_wide_selector"] = True
+                                return data
+                        except Exception as wide_exc:
+                            exc = wide_exc
                     last_exc = exc
                     DEBUG_TAIL.append(
                         _scrub(f"[orca] profile {'/'.join(profile)}: "
@@ -447,12 +472,20 @@ class StreamResolver:
             return None, str(exc), _is_permanent_failure(exc)
 
         url = self._pick_url(info)
+        has_audio = info.get("acodec", "none") != "none" or bool(info.get("audio_channels"))
+        if info.get("_orca_wide_selector") and not has_audio:
+            DEBUG_TAIL.append(
+                _scrub(f"[orca] resolve {video_id}: served formats have NO audio track "
+                       f"(vcodec={info.get('vcodec')}) — audio streams are gated on this host")
+            )
+            return None, "the server can reach this track but YouTube is gating its audio streams", False
         if not url:
             return None, "no playable audio stream was returned", False
         DEBUG_TAIL.append(
             _scrub(
                 f"[orca] resolve {video_id}: OK via {info.get('_orca_profile', 'default')} "
-                f"format={info.get('format_id')} ext={info.get('ext')} abr={info.get('abr')}"
+                f"format={info.get('format_id')} ext={info.get('ext')} "
+                f"acodec={info.get('acodec')} abr={info.get('abr')}"
             )
         )
         self.cache.put(video_id, url)
