@@ -247,23 +247,38 @@ class _CapturingLogger:
         for line in message.splitlines():
             DEBUG_TAIL.append(_scrub(line[:400]))
 
-    @staticmethod
-    def _interesting(message: str) -> bool:
+    _NOISE = (
+        "[debug] params:",
+        "[debug] optional libraries:",
+        "[debug] plugin directories:",
+        "[debug] home ",
+        "[debug] portable ",
+        "[debug] request headers",
+        "[debug] urlopen",
+        "file locked",
+        "contains escaped characters",
+    )
+
+    @classmethod
+    def _interesting(cls, message: str) -> bool:
+        if message.startswith(cls._NOISE):
+            return False
         lowered = message.lower()
         return any(
             word in lowered
             for word in (
-                "pot",
                 "player response",
                 "skipping",
-                "format",
                 "bot",
-                "age",
+                "playability",
                 "unavailable",
-                "player_client",
+                "unplayable",
+                "not available",
+                "po token",
+                "formats",
+                "age",
                 "visito",
-                "not a bot",
-                "warning",
+                "signature",
             )
         )
 
@@ -345,6 +360,10 @@ class StreamResolver:
                         raise RuntimeError("unexpected response structure from extractor")
                 except Exception as exc:
                     last_exc = exc
+                    DEBUG_TAIL.append(
+                        _scrub(f"[orca] profile {'/'.join(profile)}: "
+                               f"{type(exc).__name__}: {str(exc).splitlines()[0][:200]}")
+                    )
                     if _is_permanent_failure(exc):
                         if _is_bot_check(str(exc)):
                             log.warning(
