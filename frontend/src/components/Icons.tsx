@@ -119,6 +119,12 @@ export const PipIcon = (p: IconProps) =>
     </>
   ));
 
+export const HistoryIcon = (p: IconProps) =>
+  base(p, <path d="M13 3a9 9 0 1 0 8.95 10h-2.02A7 7 0 1 1 13 5c1.93 0 3.68.78 4.95 2.05L15 10h7V3l-2.64 2.64A8.97 8.97 0 0 0 13 3Zm-1 5v5l4.25 2.52.77-1.28-3.52-2.09V8h-1.5Z" />);
+
+export const ImportIcon = (p: IconProps) =>
+  base(p, <path d="M12 3v10.17l3.59-3.58L17 11l-5 5-5-5 1.41-1.41L12 13.17V3h0ZM5 19h14v2H5v-2Z" />);
+
 export const SettingsIcon = (p: IconProps) =>
   base(
     p,

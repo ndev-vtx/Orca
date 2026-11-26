@@ -96,7 +96,7 @@ export default function SearchPage() {
         )}
         <div className="page__grid">
           {results.map((t) => (
-            <MediaCard key={`${filter}-${t.videoId}`} song={t} roundArt={t.type === "artists"} />
+            <MediaCard key={`${filter}-${t.videoId}`} song={t} roundArt={t.type === "artist"} />
           ))}
         </div>
         {!query.trim() && (

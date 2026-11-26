@@ -128,7 +128,25 @@ export default function HomePage() {
             </button>
           ))}
         </div>
-        {loading && <p className="page__note">Summoning the currents…</p>}
+        {loading && (
+          <>
+            <div className="page__quickgrid" aria-hidden="true">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="skeleton skeleton--quick" />
+              ))}
+            </div>
+            {[0, 1].map((row) => (
+              <section key={row} className="section">
+                <div className="skeleton skeleton--card" style={{ width: 180, height: 18 }} />
+                <div className="section__row">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="skeleton skeleton--card" style={{ width: 180 }} />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </>
+        )}
         {error && <p className="page__error">{error}</p>}
         {!loading && !error && sections.length === 0 && (
           <p className="page__note">The ocean is quiet right now. Try Search.</p>

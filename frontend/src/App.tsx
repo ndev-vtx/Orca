@@ -15,6 +15,7 @@ import NotFoundPage from "./pages/NotFoundPage";
 import { usePlayerStore } from "./state/player";
 import { useLibraryStore } from "./state/libraryStore";
 import { useIsMobile } from "./utils/device";
+import { useKeyboardShortcuts } from "./utils/shortcuts";
 import "./styles/theme.css";
 import "./styles/layout.css";
 import "./styles/sidebar.css";
@@ -29,6 +30,7 @@ export default function App() {
   const loadLibrary = useLibraryStore((s) => s.loadLibrary);
   const bindEngine = usePlayerStore((s) => s.bindEngine);
   const isMobile = useIsMobile();
+  useKeyboardShortcuts();
 
   useEffect(() => {
     void loadLibrary();

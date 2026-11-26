@@ -1,8 +1,13 @@
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import TopBar from "../components/TopBar";
 import { useLibraryStore } from "../state/libraryStore";
 import { MusicTile } from "../components/Shared";
+import PlaylistModal from "../components/PlaylistModal";
+import { api } from "../services/api";
+import type { SongDto } from "../types";
 import { usePlayerStore } from "../state/player";
+import { HeartIcon, PlusIcon, QueueIcon, ImportIcon, HistoryIcon } from "../components/Icons";
 
 export default function LibraryPage() {
   const navigate = useNavigate();
@@ -11,15 +16,84 @@ export default function LibraryPage() {
   const play = usePlayerStore((s) => s.play);
   const currentId = usePlayerStore((s) => s.current?.videoId ?? null);
 
+  const [history, setHistory] = useState<SongDto[]>([]);
+  const [modal, setModal] = useState<null | "create" | "import">(null);
+  const playlistsRef = useRef<HTMLDivElement | null>(null);
+  const savedRef = useRef<HTMLDivElement | null>(null);
+  const historyRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    api
+      .history(30)
+      .then((res) => {
+        if (live) setHistory(res.history);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const tiles = [
+    {
+      label: "Favorites",
+      hint: `${savedTracks.length} saved`,
+      icon: HeartIcon,
+      onClick: () => savedRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    },
+    {
+      label: "Playlists",
+      hint: `${playlists.length} lists`,
+      icon: QueueIcon,
+      onClick: () => playlistsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    },
+    {
+      label: "Recently played",
+      hint: history.length > 0 ? "jump back in" : "nothing yet",
+      icon: HistoryIcon,
+      onClick: () => historyRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    },
+    {
+      label: "New playlist",
+      hint: "create",
+      icon: PlusIcon,
+      onClick: () => setModal("create"),
+    },
+    {
+      label: "Import",
+      hint: "from a link",
+      icon: ImportIcon,
+      onClick: () => setModal("import"),
+    },
+  ];
+
   return (
     <div className="page">
       <TopBar title="Your Library" />
       <div className="page__hero" />
       <div className="page__body">
         <h1 className="page__greeting">Your Library</h1>
-        <h2 className="section__title">Playlists</h2>
+
+        <div className="libtiles">
+          {tiles.map(({ label, hint, icon: Icon, onClick }) => (
+            <button key={label} className="libtile" onClick={onClick}>
+              <span className="libtile__icon">
+                <Icon size={18} />
+              </span>
+              <span className="libtile__text">
+                <span className="libtile__label">{label}</span>
+                <span className="libtile__hint">{hint}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <h2 className="section__title" ref={playlistsRef}>
+          Playlists
+        </h2>
         {playlists.length === 0 ? (
-          <p className="page__note">No playlists yet — create one from the sidebar.</p>
+          <p className="page__note">No playlists yet — create one from the tiles above.</p>
         ) : (
           <div className="page__grid">
             {playlists.map((p) => (
@@ -46,7 +120,10 @@ export default function LibraryPage() {
             ))}
           </div>
         )}
-        <h2 className="section__title">Saved tracks</h2>
+
+        <h2 className="section__title" ref={savedRef}>
+          Saved tracks
+        </h2>
         {savedTracks.length === 0 ? (
           <p className="page__note">Nothing saved yet.</p>
         ) : (
@@ -73,7 +150,38 @@ export default function LibraryPage() {
             ))}
           </div>
         )}
+
+        <h2 className="section__title" ref={historyRef}>
+          Recently played
+        </h2>
+        {history.length === 0 ? (
+          <p className="page__note">Nothing played yet — your history will surface here.</p>
+        ) : (
+          <div className="tracktable">
+            {history.map((t, i) => (
+              <div
+                key={`${t.videoId}-${i}`}
+                className={`tracktable__row${currentId === t.videoId ? " tracktable__row--active" : ""}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => play(history, i, "library:history")}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") play(history, i, "library:history");
+                }}
+              >
+                <span className="tracktable__num">{i + 1}</span>
+                {t.artworkUrl && <img src={t.artworkUrl} alt="" loading="lazy" />}
+                <span className="tracktable__title">
+                  {t.title}
+                  <em>{t.artist}</em>
+                </span>
+                <span className="tracktable__dur">{t.duration}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
+      {modal !== null && <PlaylistModal mode={modal} onClose={() => setModal(null)} />}
     </div>
   );
 }

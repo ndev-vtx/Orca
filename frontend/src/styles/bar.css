@@ -267,3 +267,23 @@
 .bar__track--drag .bar__thumb {
   transform: translate(-50%, -50%) scale(1);
 }
+
+.bar__notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bar__notice-retry {
+  background: var(--orca-accent);
+  color: #ffffff;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 999px;
+  transition: background 0.15s ease;
+}
+
+.bar__notice-retry:hover {
+  background: var(--orca-accent-hover);
+}

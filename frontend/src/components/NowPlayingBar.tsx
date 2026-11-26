@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import {
@@ -59,6 +59,14 @@ export default function NowPlayingBar() {
   const lyricsOpen = usePlayerStore((s) => s.lyricsOpen);
   const toggleLyrics = usePlayerStore((s) => s.toggleLyrics);
   const notify = usePlayerStore((s) => s.notify);
+  const lastError = usePlayerStore((s) => s.lastError);
+  const retryCurrent = usePlayerStore((s) => s.retryCurrent);
+
+  useEffect(() => {
+    document.title = current
+      ? `${current.title} · ${current.artist || "Unknown artist"}`
+      : "Orca";
+  }, [current]);
   const [pipWin, setPipWin] = useState<Window | null>(null);
   const [fallbackOpen, setFallbackOpen] = useState(false);
   const pipOpen = pipWin !== null || fallbackOpen;
@@ -134,7 +142,16 @@ export default function NowPlayingBar() {
     <footer className="bar" aria-label="Now playing">
       {notice && (
         <div className="bar__notice" role="status">
-          {loading && playing === false ? `loading — ${notice}` : notice}
+          <span>{loading && playing === false ? `loading — ${notice}` : notice}</span>
+          {lastError && !loading && current && (
+            <button
+              className="bar__notice-retry"
+              onClick={() => retryCurrent()}
+              title="Retry this track"
+            >
+              Retry
+            </button>
+          )}
         </div>
       )}
       <div className="bar__left">

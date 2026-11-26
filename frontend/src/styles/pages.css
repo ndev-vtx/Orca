@@ -711,3 +711,100 @@
 .settings__credit strong {
   color: var(--orca-accent-hover);
 }
+
+/* --------------------------------------------------- library tiles ---- */
+
+.libtiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  margin: 4px 0 22px;
+}
+
+.libtile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--orca-surface-raised);
+  border: 1px solid var(--orca-border);
+  border-radius: var(--orca-radius);
+  color: var(--orca-text);
+  text-align: left;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.libtile:hover {
+  background: var(--orca-surface-hover);
+  border-color: var(--orca-accent);
+}
+
+.libtile__icon {
+  flex: 0 0 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--orca-accent);
+  color: #ffffff;
+}
+
+.libtile__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.libtile__label {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.libtile__hint {
+  font-size: 11px;
+  color: var(--orca-text-dim);
+}
+
+/* ------------------------------------------------ loading skeletons ---- */
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--orca-surface-raised);
+  border-radius: var(--orca-radius-card);
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.06),
+    transparent
+  );
+  animation: orca-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes orca-shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.skeleton--quick {
+  height: 64px;
+  border-radius: var(--orca-radius);
+}
+
+.skeleton--card {
+  aspect-ratio: 1 / 1;
+}

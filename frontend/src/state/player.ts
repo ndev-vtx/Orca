@@ -92,6 +92,7 @@ interface PlaybackState {
   play(songs: SongDto[], startIndex?: number, context?: string): void;
   playSong(song: SongDto, context?: string): void;
   playAt(index: number): void;
+  retryCurrent(): void;
   toggle(): void;
   next(force?: boolean): void;
   previous(): void;
@@ -227,14 +228,45 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
     navigator.mediaSession.setActionHandler("pause", () => get().toggle());
     navigator.mediaSession.setActionHandler("previoustrack", () => get().previous());
     navigator.mediaSession.setActionHandler("nexttrack", () => get().next(true));
+    try {
+      navigator.mediaSession.setActionHandler("seekto", (details) => {
+        if (details.seekTime != null) audioEngine.seek(details.seekTime * 1000);
+      });
+      navigator.mediaSession.setActionHandler("seekbackward", (details) => {
+        const back = (details.seekOffset ?? 10) * 1000;
+        audioEngine.seek(Math.max(0, audioEngine.positionMs() - back));
+      });
+      navigator.mediaSession.setActionHandler("seekforward", (details) => {
+        const forward = (details.seekOffset ?? 10) * 1000;
+        audioEngine.seek(audioEngine.positionMs() + forward);
+      });
+    } catch {
+      /* seek actions unsupported on this platform */
+    }
   }
 
   function onEngineEvent(event: EngineEvent): void {
     const state = get();
     switch (event.type) {
-      case "progress":
+      case "progress": {
         set({ positionMs: event.positionMs, durationMs: event.durationMs });
+        if (
+          "mediaSession" in navigator &&
+          event.durationMs > 0 &&
+          typeof navigator.mediaSession.setPositionState === "function"
+        ) {
+          try {
+            navigator.mediaSession.setPositionState({
+              duration: event.durationMs / 1000,
+              position: Math.min(event.positionMs, event.durationMs) / 1000,
+              playbackRate: get().playbackRate,
+            });
+          } catch {
+            /* position state not accepted */
+          }
+        }
         break;
+      }
       case "playing":
         set({ playing: true, loading: false });
         if (state.current) reportHistory(state.current, state.context);
@@ -414,6 +446,13 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
       if (index + 1 >= queue.length) expandRadio(song);
     },
 
+    retryCurrent: () => {
+      const song = get().current;
+      if (!song) return;
+      deadTracks.delete(song.videoId);
+      startLoad(song, 0);
+    },
+
     toggle: () => {
       const state = get();
       if (audioEngine.isPlaying()) {
@@ -450,6 +489,17 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
       };
       const ahead = playableFrom(state.cursor + 1, state.queue.length, 1);
       if (ahead !== null) {
+        /* Shuffle picks a random track among the non-dead upcoming ones. */
+        if (state.shuffle) {
+          const candidates: number[] = [];
+          for (let i = state.cursor + 1; i < state.queue.length; i += 1) {
+            if (!deadTracks.has(state.queue[i].videoId)) candidates.push(i);
+          }
+          if (candidates.length > 0) {
+            get().playAt(candidates[Math.floor(Math.random() * candidates.length)]);
+            return;
+          }
+        }
         get().playAt(ahead);
         return;
       }
