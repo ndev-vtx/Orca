@@ -494,8 +494,8 @@ class StreamResolver:
                     log.info("stream resolved for %s via public mirror (%s)", video_id, remote_via)
                     self.cache.put(video_id, remote_url)
                     return remote_url, "", False
-        except ImportError:  # pragma: no cover - remote module always ships
-            pass
+        except Exception as exc:  # noqa: BLE001 - mirrors must never break the fallback
+            DEBUG_TAIL.append(f"[orca] remote layer crashed: {exc.__class__.__name__}: {str(exc)[:160]}")
 
         try:
             info = self._probe(video_id)

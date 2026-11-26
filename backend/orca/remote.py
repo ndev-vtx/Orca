@@ -42,7 +42,6 @@ PIPES_DEFAULT = ",".join(
         "https://api.piped.private.coffee",
         "https://pipedapi.ducks.party",
         "https://pipedapi.reallyaweso.me",
-        "https://pipedapi.nosebs.ru",
         "https://pipedapi.phoenixthrush.com",
     )
 )
@@ -154,7 +153,11 @@ def _pick_piped_audio(streams: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]
 
 
 def _fetch_json(url: str, timeout: float = REQUEST_TIMEOUT_S) -> Optional[Any]:
-    resp = _http().get(url, timeout=timeout)
+    try:
+        resp = _http().get(url, timeout=timeout)
+    except requests.RequestException as exc:
+        _tail(f"[orca] remote {_host(url)}: {exc.__class__.__name__}")
+        return None
     if resp.status_code != 200:
         _tail(f"[orca] remote {_host(url)}: HTTP {resp.status_code}")
         return None
@@ -256,22 +259,25 @@ def _via_cobalt(video_id: str, instances: List[str], deadline: float) -> Optiona
 
 
 def fetch_remote_stream(video_id: str) -> Tuple[Optional[str], str]:
-    """Best playable URL from the public-instance ladder, or (None, reason)."""
+    """Best playable URL from the public-instance ladder, or (None, reason).
+
+    Each provider phase gets its own slice of the time budget so one dead
+    provider cannot starve the rest.
+    """
     if not video_id:
         return None, "no track id"
     if not enabled():
         return None, "disabled"
-    deadline = time.monotonic() + REMOTE_BUDGET_S
-    for name, fetcher, env_name, default_csv in (
-        ("piped", _via_piped, "ORCA_PIPED_INSTANCES", PIPES_DEFAULT),
-        ("invidious", _via_invidious, "ORCA_INVIDIOUS_INSTANCES", INVIDIOUS_DEFAULT),
-        ("cobalt", _via_cobalt, "ORCA_COBALT_INSTANCES", COBALT_DEFAULT),
-    ):
-        url = fetcher(video_id, _instances(env_name, default_csv), deadline)
+    started = time.monotonic()
+    phase_budgets = (
+        ("piped", _via_piped, "ORCA_PIPED_INSTANCES", PIPES_DEFAULT, 0.5),
+        ("invidious", _via_invidious, "ORCA_INVIDIOUS_INSTANCES", INVIDIOUS_DEFAULT, 0.8),
+        ("cobalt", _via_cobalt, "ORCA_COBALT_INSTANCES", COBALT_DEFAULT, 1.0),
+    )
+    for name, fetcher, env_name, default_csv, share in phase_budgets:
+        phase_deadline = min(started + REMOTE_BUDGET_S * share, started + REMOTE_BUDGET_S)
+        url = fetcher(video_id, _instances(env_name, default_csv), phase_deadline)
         if url:
             return url, name
-        if time.monotonic() > deadline:
-            _tail("[orca] remote: instance ladder ran out of its time budget")
-            break
     _tail(f"[orca] remote: no public instance could serve {video_id}")
     return None, "no public instance could serve this track"

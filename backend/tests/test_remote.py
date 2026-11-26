@@ -122,3 +122,35 @@ def test_resolve_falls_through_to_ytdlp_when_mirrors_fail(monkeypatch):
     url, err, _ = resolver.resolve("xyz789")
     assert url == "https://yt.example/audio"
     assert err == ""
+
+
+def test_unreachable_instance_is_skipped_not_raised(monkeypatch):
+    import requests as http
+
+    class BoomSession:
+        def get(self, url, timeout=7, headers=None, allow_redirects=True):
+            raise http.exceptions.ConnectionError("NameResolutionError")
+
+        def post(self, url, timeout=7, json=None, headers=None):
+            raise http.exceptions.ConnectionError("NameResolutionError")
+
+    monkeypatch.setattr(remote, "_http", lambda: BoomSession())
+    assert remote._fetch_json("https://dead.example/streams/abc") is None
+    assert remote.fetch_remote_stream("abc123")[0] is None
+
+
+def test_resolve_survives_a_crashed_mirror_layer(monkeypatch):
+    from orca.stream import StreamResolver
+
+    def explode(video_id):
+        raise RuntimeError("unexpected mirror crash")
+
+    monkeypatch.setattr("orca.remote.enabled", lambda: True)
+    monkeypatch.setattr("orca.remote.fetch_remote_stream", explode)
+    monkeypatch.setattr(
+        StreamResolver, "_probe", lambda self, vid, max_attempts=2: {"url": "https://yt.example/audio", "acodec": "mp4a"}
+    )
+
+    resolver = StreamResolver()
+    url, err, _ = resolver.resolve("xyz789")
+    assert url == "https://yt.example/audio"
