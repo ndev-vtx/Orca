@@ -107,6 +107,7 @@ interface PlaybackState {
   toggleLyrics(): void;
   ensureLyrics(): Promise<void>;
   clearNotice(): void;
+  notify(message: string): void;
   bindEngine(): void;
 }
 
@@ -596,12 +597,12 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
     },
 
     clearNotice: () => {
-      if (noticeTimer !== null) {
-        window.clearTimeout(noticeTimer);
-        noticeTimer = null;
-      }
+      if (noticeTimer !== null) window.clearTimeout(noticeTimer);
+      noticeTimer = null;
       set({ notice: "" });
     },
+
+    notify: (message) => announce(message),
   };
 });
 

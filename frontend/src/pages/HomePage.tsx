@@ -1,15 +1,65 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../services/api";
-import type { HomeSection } from "../types";
+import type { HomeSection, SongDto } from "../types";
 import TopBar from "../components/TopBar";
 import SectionRow from "../components/SectionRow";
 import { usePlayerStore } from "../state/player";
+import { loadPref } from "../utils/device";
 import { PlayIcon } from "../components/Icons";
+
+const MOODS = [
+  { label: "Energize", query: "high energy workout hits" },
+  { label: "Workout", query: "workout motivation mix" },
+  { label: "Relax", query: "relaxing ambient chill" },
+  { label: "Focus", query: "deep focus instrumental" },
+  { label: "Party", query: "party anthems mix" },
+];
+
+interface BillboardPref {
+  enabled: boolean;
+  chart: string;
+  region: string;
+}
+
+function readBillboardPref(): BillboardPref {
+  const raw = loadPref("orca.billboard", "");
+  if (!raw) return { enabled: false, chart: "hot100", region: "global" };
+  try {
+    const parsed = JSON.parse(raw) as Partial<BillboardPref>;
+    return {
+      enabled: Boolean(parsed.enabled),
+      chart: parsed.chart ?? "hot100",
+      region: parsed.region ?? "global",
+    };
+  } catch {
+    return { enabled: false, chart: "hot100", region: "global" };
+  }
+}
+
+const CHART_LABEL: Record<string, string> = {
+  hot100: "Hot 100",
+  viral: "Viral hits",
+  new: "New releases",
+};
+
+const REGION_LABEL: Record<string, string> = {
+  global: "Global",
+  us: "United States",
+  uk: "United Kingdom",
+  vietnam: "Việt Nam",
+  korea: "Korea",
+  japan: "Japan",
+};
 
 export default function HomePage() {
   const [sections, setSections] = useState<HomeSection[]>([]);
+  const [billboard, setBillboard] = useState<SongDto[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+
+  const billboardPref = useMemo(readBillboardPref, []);
 
   useEffect(() => {
     let live = true;
@@ -33,6 +83,22 @@ export default function HomePage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!billboardPref.enabled) return;
+    let live = true;
+    api
+      .billboard(billboardPref.chart, billboardPref.region)
+      .then((songs) => {
+        if (live) setBillboard(songs);
+      })
+      .catch(() => {
+        if (live) setBillboard([]);
+      });
+    return () => {
+      live = false;
+    };
+  }, [billboardPref]);
+
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
     if (hour < 5) return "Late night currents";
@@ -50,32 +116,58 @@ export default function HomePage() {
       <div className="page__hero" />
       <div className="page__body">
         <h1 className="page__greeting">{greeting}</h1>
+        <div className="chips" role="list">
+          {MOODS.map((m) => (
+            <button
+              key={m.label}
+              role="listitem"
+              className="chip"
+              onClick={() => navigate(`/search?q=${encodeURIComponent(m.query)}`)}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
         {loading && <p className="page__note">Summoning the currents…</p>}
         {error && <p className="page__error">{error}</p>}
         {!loading && !error && sections.length === 0 && (
           <p className="page__note">The ocean is quiet right now. Try Search.</p>
         )}
         {heroTracks.length > 0 && (
-          <div className="page__quickgrid">
-            {heroTracks.map((t, i) => (
-              <button
-                key={t.videoId}
-                className="quickcard"
-                onClick={() => play(heroTracks, i, "home")}
-                title={`Play ${t.title} — ${t.artist}`}
-              >
-                {t.artworkUrl ? (
-                  <img src={t.artworkUrl} alt="" loading="lazy" />
-                ) : (
-                  <span className="quickcard__fallback">{t.title.charAt(0).toUpperCase()}</span>
-                )}
-                <span className="quickcard__title">{t.title}</span>
-                <span className="quickcard__play" aria-hidden="true">
-                  <PlayIcon size={16} />
-                </span>
-              </button>
-            ))}
-          </div>
+          <section className="section">
+            <div className="section__head">
+              <h2 className="section__title">Quick Picks</h2>
+            </div>
+            <div className="page__quickgrid">
+              {heroTracks.map((t, i) => (
+                <button
+                  key={t.videoId}
+                  className="quickcard"
+                  onClick={() => play(heroTracks, i, "home")}
+                  title={`Play ${t.title} — ${t.artist}`}
+                >
+                  {t.artworkUrl ? (
+                    <img src={t.artworkUrl} alt="" loading="lazy" />
+                  ) : (
+                    <span className="quickcard__fallback">{t.title.charAt(0).toUpperCase()}</span>
+                  )}
+                  <span className="quickcard__title">{t.title}</span>
+                  <span className="quickcard__play" aria-hidden="true">
+                    <PlayIcon size={16} />
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+        {billboard.length > 0 && (
+          <SectionRow
+            title={`Billboard ${CHART_LABEL[billboardPref.chart] ?? "chart"} · ${
+              REGION_LABEL[billboardPref.region] ?? ""
+            }`}
+            tracks={billboard}
+            context="home:billboard"
+          />
         )}
         {sections.map((s) => (
           <SectionRow key={s.title} title={s.title} tracks={s.tracks} context={`home:${s.title}`} />

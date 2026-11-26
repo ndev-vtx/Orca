@@ -1,0 +1,273 @@
+/*
+ * Mobile adaptations (phones — iPhone/iOS and Android).
+ * Activated when App sets .orca-app--mobile (useIsMobile: viewport + pointer
+ * + UA + touch signals). Safe-area insets need viewport-fit=cover, which
+ * index.html sets.
+ */
+
+.orca-app--mobile .orca-app__panes {
+  gap: 0;
+}
+
+.orca-app--mobile .orca-main {
+  border-radius: 0;
+  margin: 0;
+  /*
+   * Room for the mini Now Playing bar (64px) + mobile tab nav (62px) +
+   * home-indicator safe area.
+   */
+  padding-bottom: calc(64px + 62px + env(safe-area-inset-bottom, 0px));
+}
+
+/* --------------------------------------------------- mobile tab bar ---- */
+
+.mobilenav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  display: flex;
+  background: rgba(5, 7, 12, 0.96);
+  border-top: 1px solid var(--orca-border);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.mobilenav__tab {
+  flex: 1;
+  min-height: 62px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: var(--orca-text-dim);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobilenav__tab--on {
+  color: var(--orca-text);
+}
+
+.mobilenav__tab--on svg {
+  color: var(--orca-accent);
+}
+
+/* --------------------------------------------- compact now playing bar -- */
+
+.orca-app--mobile .bar {
+  bottom: calc(62px + env(safe-area-inset-bottom, 0px));
+  left: 0;
+  right: 0;
+  height: 64px;
+  border-radius: 0;
+  border: none;
+  border-top: 1px solid var(--orca-border);
+  padding: 0 12px;
+  padding-left: max(12px, env(safe-area-inset-left, 0px));
+  padding-right: max(12px, env(safe-area-inset-right, 0px));
+  grid-template-columns: 1fr auto;
+}
+
+.orca-app--mobile .bar__right {
+  display: none;
+}
+
+.orca-app--mobile .bar__seek {
+  display: none;
+}
+
+.orca-app--mobile .bar__cover {
+  width: 42px;
+  height: 42px;
+}
+
+.orca-app--mobile .bar__title {
+  font-size: 13px;
+}
+
+.orca-app--mobile .bar__play {
+  width: 44px;
+  height: 44px;
+}
+
+.orca-app--mobile .bar__ctrl {
+  width: 40px;
+  height: 40px;
+}
+
+/* -------------------------------------------------- touch targets ------ */
+
+.orca-app--mobile button,
+.orca-app--mobile [role="button"] {
+  min-height: 44px;
+}
+
+.orca-app--mobile .card__play,
+.orca-app--mobile .card__heart,
+.orca-app--mobile .quickcard__play {
+  min-height: 0;
+}
+
+.orca-app--mobile .tracktable__row {
+  min-height: 56px;
+  padding: 8px 12px;
+}
+
+.orca-app--mobile .tracktable__row:active {
+  background: var(--orca-surface-hover);
+}
+
+.orca-app--mobile .card:active {
+  background: var(--orca-surface-hover);
+}
+
+.orca-app--mobile .card {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ------------------------------------------------- chips, pills, grids -- */
+
+.orca-app--mobile .chips {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 8px;
+  padding-bottom: 4px;
+  margin-left: -16px;
+  margin-right: -16px;
+  padding-left: 16px;
+  padding-right: 16px;
+  scrollbar-width: none;
+}
+
+.orca-app--mobile .chips::-webkit-scrollbar {
+  display: none;
+}
+
+.orca-app--mobile .chip {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 8px 16px;
+}
+
+.orca-app--mobile .page__pills {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 8px;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+}
+
+.orca-app--mobile .page__pills::-webkit-scrollbar {
+  display: none;
+}
+
+.orca-app--mobile .page__pills button {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 8px 16px;
+}
+
+.orca-app--mobile .section__row {
+  display: flex;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scrollbar-width: none;
+}
+
+.orca-app--mobile .section__row::-webkit-scrollbar {
+  display: none;
+}
+
+.orca-app--mobile .section__row .card {
+  flex: 0 0 148px;
+  width: 148px;
+}
+
+.orca-app--mobile .page__quickgrid {
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.orca-app--mobile .quickcard {
+  min-height: 56px;
+}
+
+/* ------------------------------------------------------- album page ---- */
+
+.orca-app--mobile .albumhead {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  padding-top: 8px;
+}
+
+.orca-app--mobile .albumhead__cover {
+  width: min(56vw, 220px);
+  height: min(56vw, 220px);
+  align-self: center;
+}
+
+.orca-app--mobile .albumhead__play {
+  min-height: 46px;
+}
+
+/* ------------------------------------------------------ settings page -- */
+
+.orca-app--mobile .settings__section {
+  padding: 16px;
+}
+
+.orca-app--mobile .settings__row {
+  padding: 12px 0;
+}
+
+.orca-app--mobile .settings__row select {
+  min-width: 0;
+  max-width: 55vw;
+}
+
+.orca-app--mobile .settings__danger {
+  min-height: 46px;
+}
+
+/* --------------------------------------------- modals as bottom sheets -- */
+
+.orca-app--mobile .modal-overlay {
+  place-items: end center;
+}
+
+.orca-app--mobile .modal {
+  width: 100%;
+  max-width: none;
+  max-height: 82vh;
+  overflow-y: auto;
+  border-radius: 16px 16px 0 0;
+  padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  animation: orca-sheet-up 0.22s ease;
+}
+
+@keyframes orca-sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+/* ------------------------------------------------------------ misc ----- */
+
+.orca-app--mobile .page__greeting {
+  font-size: 26px;
+}
+
+.orca-app--mobile .page__body {
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}

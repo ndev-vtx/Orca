@@ -58,6 +58,7 @@ interface YtPlayer {
   getCurrentTime(): number;
   getDuration(): number;
   getPlayerState(): number;
+  destroy(): void;
 }
 
 interface YtPlayerEvent {
@@ -159,6 +160,10 @@ export class AudioEngine {
   private ytMuted = false;
   private ytRate = 1.0;
   private ytOpened = false;
+  private ytHost: HTMLElement | null = null;
+  private ytPark: HTMLElement | null = null;
+  private ytSurfaceMoved = false;
+  private wantPlay = false;
 
   constructor() {
     this.el = new Audio();
@@ -194,7 +199,17 @@ export class AudioEngine {
         durationMs: this.el.duration * 1000 || 0,
       });
     });
-    this.el.addEventListener("play", () => this.emit({ type: "playing" }));
+    this.el.addEventListener("play", () => {
+      /*
+       * Echo guard: the two sinks must never sound at once. If the
+       * <audio> sink starts while the YouTube player is audible, the
+       * YouTube player is silenced immediately.
+       */
+      if (this.yt && this.ytReady && this.yt.getPlayerState() === YT_STATE_PLAYING) {
+        this.yt.pauseVideo();
+      }
+      this.emit({ type: "playing" });
+    });
     this.el.addEventListener("pause", () => this.emit({ type: "paused" }));
     this.el.addEventListener("ended", () => {
       const sourceId = this.sourceId;
@@ -351,20 +366,45 @@ export class AudioEngine {
     return loadYouTubeIframeApi().then(
       (YT) =>
         new Promise<YtPlayer>((resolve) => {
-          if (this.yt && this.ytReady) {
+          if (this.yt && this.ytReady && !this.ytSurfaceMoved) {
             resolve(this.yt);
             return;
           }
-          const host = document.createElement("div");
-          host.style.position = "fixed";
-          host.style.left = "-9999px";
-          host.style.top = "0";
-          host.style.width = "320px";
-          host.style.height = "180px";
-          host.style.opacity = "0";
-          host.style.pointerEvents = "none";
-          document.body.appendChild(host);
-          const player = new YT.Player(host, {
+          /*
+           * A moved host (PiP window round-trip) invalidates the old player
+           * object: its iframe belongs to another document now, so rebuild.
+           */
+          if (this.yt) {
+            try {
+              this.yt.destroy();
+            } catch {
+              /* iframe already gone */
+            }
+            this.yt = null;
+            this.ytReady = false;
+          }
+          if (!this.ytPark) {
+            const park = document.createElement("div");
+            park.style.position = "fixed";
+            park.style.left = "-9999px";
+            park.style.top = "0";
+            park.style.width = "320px";
+            park.style.height = "180px";
+            park.style.opacity = "0";
+            park.style.pointerEvents = "none";
+            document.body.appendChild(park);
+            this.ytPark = park;
+          }
+          if (!this.ytHost) {
+            const host = document.createElement("div");
+            host.style.width = "100%";
+            host.style.height = "100%";
+            this.ytPark!.appendChild(host);
+            this.ytHost = host;
+          }
+          this.ytHost.innerHTML = "";
+          this.ytSurfaceMoved = false;
+          const player = new YT.Player(this.ytHost, {
             playerVars: {
               autoplay: 1,
               controls: 0,
@@ -383,6 +423,10 @@ export class AudioEngine {
                 if (this.ytMuted) player.mute();
                 else player.unMute();
                 player.setPlaybackRate(this.ytRate);
+                if (this.wantPlay) {
+                  this.wantPlay = false;
+                  player.playVideo();
+                }
                 resolve(player);
               },
               onStateChange: (event) => this.onYtState(event.data),
@@ -406,6 +450,9 @@ export class AudioEngine {
   private onYtState(state: number): void {
     if (this.sink !== "yt") return;
     if (state === YT_STATE_PLAYING) {
+      /* Echo guard, other direction: YouTube audible → mute the fallback. */
+      if (!this.el.paused) this.el.pause();
+      this.wantPlay = false;
       this.playingReported = true;
       this.evictWatchdog();
       if (!this.ytOpened) {
@@ -497,10 +544,31 @@ export class AudioEngine {
 
   playCurrent(): void {
     if (this.sink === "yt") {
-      if (this.yt && this.ytReady) this.yt.playVideo();
+      if (this.yt && this.ytReady) {
+        this.yt.playVideo();
+      } else {
+        /* Player still loading — remember the intent so onReady resumes. */
+        this.wantPlay = true;
+      }
       return;
     }
     void this.el.play().catch(() => undefined);
+  }
+
+  /*
+   * Move the YouTube player element between containers (PiP window ↔
+   * hidden park) without tearing down the playback session. The iframe
+   * reloads on document moves, so callers should re-issue loadTrack with
+   * the preserved position.
+   */
+  attachSurface(container: HTMLElement | null): HTMLElement | null {
+    if (!this.ytHost) return null;
+    const target = container ?? this.ytPark;
+    if (target && this.ytHost.parentElement !== target) {
+      target.appendChild(this.ytHost);
+      this.ytSurfaceMoved = true;
+    }
+    return this.ytHost;
   }
 
   pause(): void {

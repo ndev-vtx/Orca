@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import logging
+import re
 import time
 from typing import Any, Callable, Dict, List, Optional, TypeVar
 
@@ -26,6 +27,46 @@ _FILTER_ALIASES = {
     "video": "videos", "album": "albums", "artist": "artists",
     "playlist": "playlists",
 }
+
+# YouTube Music feeds are noisy: Shorts sections, sub-minute clips, sped-up /
+# slowed / nightcore spam and montage compilations bury real music. Junk items
+# are dropped outright; spam-pattern titles are demoted below clean results.
+_JUNK_TITLE_RE = re.compile(
+    r"\bshorts?\b|\bclips?\b|\btiktok\b|\bmeme\b", re.IGNORECASE
+)
+_SPAM_TITLE_RE = re.compile(
+    r"sped\s*up|slowed(?:\s*down)?|nightcore|8d\s*audio|montage"
+    r"|\breverb\b|bass\s*boosted|\blyrics?\b.*\bvideo\b",
+    re.IGNORECASE,
+)
+_MIN_TRACK_SECONDS = 90
+
+
+def _duration_seconds(duration: str) -> int:
+    parts = [p for p in str(duration or "").strip().split(":") if p.strip().isdigit()]
+    if not parts:
+        return 0
+    seconds = 0
+    for part in parts:
+        seconds = seconds * 60 + int(part)
+    return seconds
+
+
+def _is_junk(song: Song) -> bool:
+    if _JUNK_TITLE_RE.search(song.title):
+        return True
+    seconds = _duration_seconds(song.duration)
+    return 0 < seconds < _MIN_TRACK_SECONDS
+
+
+def _spam_penalty(song: Song) -> int:
+    return 1 if _SPAM_TITLE_RE.search(song.title) else 0
+
+
+def _clean_songs(songs: List[Song]) -> List[Song]:
+    """Drop Shorts/clip junk, demote spam-pattern titles, keep stable order."""
+    kept = [s for s in songs if not _is_junk(s)]
+    return sorted(kept, key=_spam_penalty)
 
 
 def _with_retry(
@@ -139,8 +180,57 @@ class CatalogSource:
             if song is not None:
                 found.append(song)
 
+        found = _clean_songs(found)
         log.info("search %r -> %d track(s)", query, len(found))
         return found
+
+    def album(self, browse_id: str) -> Dict[str, Any]:
+        """Album detail: title, artist, cover and its tracklist."""
+        browse_id = (browse_id or "").strip()
+        if not browse_id:
+            return {}
+
+        def _do_album() -> Dict[str, Any]:
+            return self.api.get_album(browse_id)
+
+        try:
+            data = _with_retry(
+                _do_album,
+                max_attempts=2,
+                base_delay=0.6,
+                operation_name=f"album({browse_id})",
+            )
+        except Exception as exc:
+            log.warning("album lookup failed for %s: %s", browse_id, exc)
+            return {}
+        if not isinstance(data, dict):
+            return {}
+
+        tracks: List[Song] = []
+        for raw in data.get("tracks") or []:
+            if not isinstance(raw, dict):
+                continue
+            item = {**raw, "resultType": "song"}
+            song = self._build(item, duration_key="duration")
+            if song is not None:
+                tracks.append(song)
+
+        thumbnails = data.get("thumbnails") or []
+        cover = ""
+        if thumbnails:
+            try:
+                cover = sorted(thumbnails, key=lambda t: t.get("width", 0))[-1]["url"]
+            except (IndexError, KeyError, TypeError):
+                cover = ""
+        artist = _artist_line({"artists": data.get("artists") or []})
+        return {
+            "browseId": browse_id,
+            "title": html.unescape(str(data.get("title") or "Unknown album")),
+            "artist": artist,
+            "year": str(data.get("year") or ""),
+            "cover": cover,
+            "tracks": tracks,
+        }
 
     def similar(self, seed_id: str, limit: int = 26) -> List[Song]:
         """Tracks the recommendation graph puts next to `seed_id`. Best effort."""
@@ -168,6 +258,7 @@ class CatalogSource:
             seen.add(song.video_id)
             related.append(song)
 
+        related = _clean_songs(related)
         log.debug("radio for %s -> %d track(s)", seed_id, len(related))
         return related
 
@@ -253,9 +344,33 @@ class CatalogSource:
             if valid_tracks:
                 sections.append({
                     "title": html.unescape(title) if isinstance(title, str) else str(title),
-                    "tracks": valid_tracks
+                    "tracks": _clean_songs(valid_tracks)
                 })
         return sections
+
+    def billboard(self, chart: str = "hot100", region: str = "global", limit: int = 25) -> List[Song]:
+        """Chart-style track lists via YouTube Music search.
+
+        Billboard's own site has no public API, so charts are sourced from
+        curated YouTube Music queries (weekly-updated chart roundups). Junk
+        cleaning applies like every other catalog surface.
+        """
+        queries = {
+            ("hot100", "global"): "billboard hot 100 top songs this week",
+            ("hot100", "us"): "billboard hot 100 this week usa",
+            ("hot100", "uk"): "uk top 40 charts this week",
+            ("hot100", "vietnam"): "nhac tre hot viet nam moi nhat",
+            ("hot100", "korea"): "kpop top hits this week",
+            ("hot100", "japan"): "jpop top hits this week",
+            ("viral", "global"): "viral hits top tracks this week",
+            ("viral", "vietnam"): "nhac hot trend viet nam",
+            ("viral", "us"): "viral hits usa this week",
+            ("new", "global"): "brand new music this week new releases",
+            ("new", "vietnam"): "nhac tre moi nhat trong tuan",
+            ("new", "us"): "new music this week new releases",
+        }
+        query = queries.get((chart, region)) or queries.get((chart, "global")) or queries.get(("hot100", "global"), "top hits this week")
+        return self.search(query, limit=limit)  # search() already junk-cleans
 
     def top_artists(self, country: str = "IN") -> List[Song]:
         try:

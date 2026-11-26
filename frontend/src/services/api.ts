@@ -80,6 +80,13 @@ export const api = {
 
   similar: (videoId: string) =>
     request<SongDto[]>(`/api/similar/${encodeURIComponent(videoId)}`),
+  album: (browseId: string) =>
+    request<AlbumResponse>(`/api/album/${encodeURIComponent(browseId)}`),
+
+  billboard: (chart: string, region: string) =>
+    request<SongDto[]>(`/api/billboard?chart=${encodeURIComponent(chart)}&region=${encodeURIComponent(region)}`),
+
+  clearHistory: () => del<Record<string, never>>("/api/library/history"),
 
   lyrics: (song: SongDto) => {
     const params = new URLSearchParams({
@@ -148,3 +155,12 @@ export const api = {
       ? `${BASE}/api/stream/proxy/${encodeURIComponent(videoId)}`
       : `${BASE}/api/stream/${encodeURIComponent(videoId)}`,
 };
+
+export interface AlbumResponse {
+  browseId: string;
+  title: string;
+  artist: string;
+  year: string;
+  cover: string;
+  tracks: SongDto[];
+}

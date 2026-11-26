@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   HeartIcon,
@@ -7,6 +7,7 @@ import {
   MuteIcon,
   NextIcon,
   PauseIcon,
+  PipIcon,
   PlayIcon,
   PrevIcon,
   QueueIcon,
@@ -18,6 +19,8 @@ import {
 import { MusicTile } from "./Shared";
 import { formatTime, usePlayerStore } from "../state/player";
 import { useLibraryStore } from "../state/libraryStore";
+import { activePip, canDocumentPip, openPip, setPipTitle } from "../services/pip";
+import { audioEngine } from "../services/audioEngine";
 
 type SliderKind = "seek" | "volume";
 
@@ -54,6 +57,8 @@ export default function NowPlayingBar() {
   const cycleRepeat = usePlayerStore((s) => s.cycleRepeat);
   const lyricsOpen = usePlayerStore((s) => s.lyricsOpen);
   const toggleLyrics = usePlayerStore((s) => s.toggleLyrics);
+  const notify = usePlayerStore((s) => s.notify);
+  const [pipOpen, setPipOpen] = useState(false);
 
   const saved = useLibraryStore((s) =>
     current ? s.savedIds.has(current.videoId) : false,
@@ -94,6 +99,54 @@ export default function NowPlayingBar() {
 
   const onToggleMute = () => {
     setMuted(!muted);
+  };
+
+  useEffect(() => {
+    if (current) setPipTitle(current.title, current.artist || "Unknown artist");
+  }, [current]);
+
+  const togglePip = async () => {
+    const open = activePip();
+    if (open) {
+      open.close();
+      return;
+    }
+    if (!canDocumentPip()) {
+      notify("Picture-in-Picture isn't supported in this browser");
+      return;
+    }
+    if (!current) {
+      notify("Play something first");
+      return;
+    }
+    const resumeMs = Math.max(0, usePlayerStore.getState().positionMs - 1500);
+    const host = audioEngine.attachSurface(null);
+    if (!host) {
+      notify("Picture-in-Picture isn't available for this track");
+      return;
+    }
+    try {
+      const handle = await openPip(host, () => {
+        setPipOpen(false);
+        audioEngine.attachSurface(null);
+        const song = usePlayerStore.getState().current;
+        if (song) {
+          audioEngine.loadTrack(
+            song.videoId,
+            song.videoId,
+            usePlayerStore.getState().positionMs,
+          );
+        }
+      });
+      if (handle) {
+        setPipOpen(true);
+        setPipTitle(current.title, current.artist || "Unknown artist");
+        audioEngine.loadTrack(current.videoId, current.videoId, resumeMs);
+      }
+    } catch {
+      audioEngine.attachSurface(null);
+      notify("Picture-in-Picture could not be opened");
+    }
   };
 
   return (
@@ -211,6 +264,15 @@ export default function NowPlayingBar() {
           disabled={!current}
         >
           <LyricsIcon size={16} />
+        </button>
+        <button
+          className={`bar__ctrl${pipOpen ? " bar__ctrl--on" : ""}`}
+          aria-label="Picture-in-Picture"
+          aria-pressed={pipOpen}
+          title={pipOpen ? "Exit picture-in-picture" : "Picture-in-Picture"}
+          onClick={() => void togglePip()}
+        >
+          <PipIcon size={16} />
         </button>
         <button
           className="bar__ctrl"

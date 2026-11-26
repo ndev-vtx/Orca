@@ -337,6 +337,35 @@ def create_app() -> FastAPI:
             return []
         return _dtos(songs)
 
+    @app.get("/api/album/{browse_id}")
+    def album_detail(
+        browse_id: str,
+        catalog: CatalogSource = Depends(deps["catalog"]),
+    ) -> Dict[str, Any]:
+        data = catalog.album(browse_id)
+        if not data:
+            raise HTTPException(status_code=404, detail="album not found")
+        data["tracks"] = _dtos(data.get("tracks") or [])
+        return data
+
+    @app.get("/api/billboard", response_model=List[SongDto])
+    def billboard(
+        chart: str = "hot100",
+        region: str = "global",
+        limit: int = 25,
+        catalog: CatalogSource = Depends(deps["catalog"]),
+    ) -> List[SongDto]:
+        try:
+            songs = catalog.billboard(
+                chart=(chart or "hot100").strip().lower(),
+                region=(region or "global").strip().lower(),
+                limit=max(1, min(limit, 50)),
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.error("billboard failed (chart=%r region=%r): %s", chart, region, exc)
+            return []
+        return _dtos(songs)
+
     @app.get("/api/artists/top", response_model=List[SongDto])
     def top_artists(catalog: CatalogSource = Depends(deps["catalog"])) -> List[SongDto]:
         try:

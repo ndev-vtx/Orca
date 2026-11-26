@@ -66,3 +66,22 @@ export interface ImportResult {
   playlistId?: number;
   error?: string;
 }
+
+export interface AlbumDetail {
+  browseId: string;
+  title: string;
+  artist: string;
+  year: string;
+  cover: string;
+  tracks: SongDto[];
+}
+
+export type BillboardChart = "hot100" | "viral" | "new";
+
+export type BillboardRegion = "global" | "us" | "uk" | "vietnam" | "korea" | "japan";
+
+export interface BillboardPref {
+  enabled: boolean;
+  chart: BillboardChart;
+  region: BillboardRegion;
+}
