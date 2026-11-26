@@ -180,6 +180,19 @@ def _is_bot_check(exc_text: str) -> bool:
     return "not a bot" in exc_text.lower()
 
 
+def _client_profiles() -> Tuple[Tuple[str, ...], ...]:
+    """Profiles from ORCA_YTDLP_CLIENTS (';' separates profiles, ',' clients)."""
+    raw = os.environ.get("ORCA_YTDLP_CLIENTS", "").strip()
+    if not raw:
+        return CLIENT_PROFILES
+    profiles = []
+    for part in raw.split(";"):
+        clients = tuple(c.strip() for c in part.split(",") if c.strip())
+        if clients:
+            profiles.append(clients)
+    return tuple(profiles) or CLIENT_PROFILES
+
+
 def _cookie_options() -> Dict[str, Any]:
     """yt-dlp cookie options from ORCA_YT_COOKIE (file or inline content).
 
@@ -239,6 +252,11 @@ class StreamResolver:
         self.cache = cache if cache is not None else StreamCache()
         self.disk_cache = disk_cache
         self.cookie_configured = "cookiefile" in self.options
+        # Authenticated sessions are more stable when the watch page is
+        # fetched, so only fully-skip it for anonymous extraction.
+        self.player_skip = (
+            ["configs", "js"] if self.cookie_configured else ["webpage", "configs", "js"]
+        )
         check_ytdlp_freshness()
 
     def set_quality_mode(self, mode: str) -> None:
@@ -252,12 +270,12 @@ class StreamResolver:
     def _probe(self, target: str, max_attempts: int = 2) -> Dict[str, Any]:
         """Extract info from yt-dlp, cycling player profiles on bot checks."""
         last_exc: Optional[Exception] = None
-        for profile in CLIENT_PROFILES:
+        for profile in _client_profiles():
             options = dict(self.options)
             options["extractor_args"] = {
                 "youtube": {
                     "player_client": list(profile),
-                    "player_skip": ["webpage", "configs", "js"],
+                    "player_skip": list(self.player_skip),
                 }
             }
             for attempt in range(1, max_attempts + 1):

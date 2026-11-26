@@ -114,3 +114,40 @@ Verify with `GET /api/doctor` — the `yt cookies` line must say `configured`.
 Note that serverless storage is ephemeral: favorites, history and playlists
 reset when the instance recycles. Point `ORCA_DATA_DIR` at a persistent disk
 host, or mount one, for durable library data.
+
+## Deploying to Vercel (or any serverless host)
+
+The repo is Vercel-ready: `vercel.json` builds the frontend and runs the whole
+FastAPI backend as a serverless function. Push and import the repo as a single
+project — no extra setup on the Vercel side.
+
+**YouTube blocks unsigned stream extraction from datacenter IPs** ("Sign in to
+confirm you're not a bot"). Orca rotates yt-dlp player profiles to dodge it,
+but the reliable fix is a signed-in session cookie:
+
+1. Use a **throwaway** Google/YouTube account (automated use can get an
+   account rate-limited or banned — never your main one).
+2. Open a **private/incognito window**, log into YouTube as that account.
+3. In the **same window and tab**, open `https://www.youtube.com/robots.txt`
+   (keep it the only open private tab — this freezes cookie rotation).
+4. Export `youtube.com` cookies from that tab with an extension such as
+   "Get cookies.txt LOCALLY" (**Netscape format**), then **close the incognito
+   window immediately** so YouTube never rotates the session.
+5. Vercel → Project → Settings → Environment Variables → add `ORCA_YT_COOKIE`
+   with the whole file as the value (multi-line fine, escaped `\n` also
+   works), then redeploy.
+
+Check `https://<your-app>.vercel.app/api/doctor` afterwards:
+
+- `yt cookies : configured` — the env var was picked up
+- `stream test : OK (signed url issued)` — extraction works end-to-end
+- `stream test : FAILED: <reason>` — the verbatim YouTube/yt-dlp refusal to debug with
+
+`ORCA_YTDLP_CLIENTS` (optional) overrides the player profiles, e.g.
+`tv,web_safari;android_vr` (`;` separates profiles tried in order, `,` the
+clients per profile). Cookie sessions automatically fetch the watch page
+(only pageless extraction skips it).
+
+Note that serverless storage is ephemeral: favorites, history and playlists
+reset when the instance recycles. Point `ORCA_DATA_DIR` at a persistent disk
+host, or mount one, for durable library data.

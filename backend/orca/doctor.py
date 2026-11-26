@@ -16,9 +16,31 @@ from pathlib import Path
 from typing import List
 
 from .config import APP_NAME, STREAM_CACHE_TTL_S, YTDLP_MAX_AGE_DAYS
-from .stream import BASE_OPTIONS, _cookie_options, ytdlp_age_days, ytdlp_version
+from .stream import (
+    BASE_OPTIONS,
+    StreamResolver,
+    _client_profiles,
+    _cookie_options,
+    ytdlp_age_days,
+    ytdlp_version,
+)
 
 LOG_FILENAME = "orca.log"
+
+SELF_TEST_VIDEO_ID = "jNQXAC9IVRw"
+
+
+def _stream_self_test() -> str:
+    """Resolve one stable public video and report the verbatim outcome."""
+    try:
+        resolver = StreamResolver()
+        url, err, _permanent = resolver.resolve(SELF_TEST_VIDEO_ID)
+    except Exception as exc:  # noqa: BLE001
+        return f"FAILED: resolver crashed: {exc}"
+    if url:
+        return "OK (signed url issued)"
+    reason = err or "no url and no error message"
+    return f"FAILED: {reason}"
 
 
 def log_dir() -> Path:
@@ -76,6 +98,8 @@ def collect() -> List[str]:
         f"audio format : {BASE_OPTIONS['format']}",
         f"stream cache : {STREAM_CACHE_TTL_S}s TTL",
         f"yt cookies    : {'configured' if _cookie_options() else 'not configured (ORCA_YT_COOKIE)'}",
+        f"yt clients     : {';'.join(','.join(p) for p in _client_profiles())}",
+        f"stream test    : {_stream_self_test()}",
         f"ffmpeg       : {_ffmpeg_version()}",
         f"log          : {log_path()}",
     ]
