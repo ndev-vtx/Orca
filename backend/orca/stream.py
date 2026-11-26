@@ -178,8 +178,11 @@ MUSIC_URL = "https://music.youtube.com/watch?v={0}"
 # the ladder rather than an exotic fallback.
 CLIENT_PROFILES: Tuple[Tuple[Tuple[str, ...], str], ...] = (
     (("android", "ios"), WATCH_URL),
-    (("tv",), WATCH_URL),
     (("web_music",), MUSIC_URL),
+    (("web_safari",), WATCH_URL),
+    (("mweb",), WATCH_URL),
+    (("web",), WATCH_URL),
+    (("tv",), WATCH_URL),
     (("android",), MUSIC_URL),
     (("android_vr",), WATCH_URL),
 )
