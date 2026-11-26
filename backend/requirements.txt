@@ -1,8 +1,8 @@
 ytmusicapi>=1.7.0,<2.0.0
-# yt-dlp breaks against YouTube on a rolling basis, so an unpinned install means
-# "worked yesterday" is not a stable state. Floor is a known-good calendar
-# release; ceiling keeps a fresh major from landing unannounced.
-yt-dlp>=2025.10.1,<2027.1.1
+# yt-dlp breaks against YouTube on a rolling basis; yt-dlp ships fixes in
+# nightly builds (e.g. the tv_downgraded 'page needs to be reloaded' regression
+# that hits every cookie-authenticated session). Track nightly here.
+yt-dlp @ https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp.tar.gz
 requests>=2.31.0,<3.0.0
 mutagen>=1.47.0,<2.0.0
 fastapi>=0.115.0
