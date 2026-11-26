@@ -17,6 +17,7 @@ from typing import List
 
 from .config import APP_NAME, STREAM_CACHE_TTL_S, YTDLP_MAX_AGE_DAYS
 from .stream import (
+    DEBUG_TAIL,
     BASE_OPTIONS,
     StreamResolver,
     _client_profiles,
@@ -28,6 +29,11 @@ from .stream import (
 LOG_FILENAME = "orca.log"
 
 SELF_TEST_VIDEO_ID = "jNQXAC9IVRw"
+
+
+def _js_runtimes() -> str:
+    found = [name for name in ("node", "deno", "bun", "quickjs", "qjs") if shutil.which(name)]
+    return ", ".join(found) if found else "none on PATH (yt-dlp cannot solve JS challenges)"
 
 
 def _stream_self_test() -> str:
@@ -75,6 +81,10 @@ def _ffmpeg_version() -> str:
     return exe
 
 
+def _debug_tail(limit: int = 30) -> List[str]:
+    return [f"  {line}" for line in list(DEBUG_TAIL)[-limit:]]
+
+
 def collect() -> List[str]:
     """Diagnostic lines, in the order a bug report needs them."""
     version = ytdlp_version()
@@ -101,8 +111,9 @@ def collect() -> List[str]:
         f"yt clients     : {';'.join(','.join(p) for p in _client_profiles())}",
         f"stream test    : {_stream_self_test()}",
         f"ffmpeg       : {_ffmpeg_version()}",
+        f"js runtime    : {_js_runtimes()}",
         f"log          : {log_path()}",
-    ]
+    ] + _debug_tail()
 
 
 def main() -> int:

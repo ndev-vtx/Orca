@@ -14,7 +14,9 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from collections import deque
+from typing import Any, Deque, Dict, List, Optional, Tuple
+import re
 
 import yt_dlp
 
@@ -217,10 +219,66 @@ def _cookie_options() -> Dict[str, Any]:
     return {}
 
 
+# Ring buffer of yt-dlp's own verdicts (bot checks, dropped formats, client
+# fallbacks) so /api/doctor can show WHY extraction failed on a remote host.
+# Only warnings, errors and key decisions are kept; signed-URLs are scrubbed.
+DEBUG_TAIL: Deque[str] = deque(maxlen=150)
+_DEBUG_URL = re.compile(r"(googlevideo\.com/videoplayback\?)[^\s\"']*")
+
+
+def _scrub(line: str) -> str:
+    return _DEBUG_URL.sub(r"\1<signed-url withheld>", line)
+
+
+class _CapturingLogger:
+    """Trims yt-dlp to the decisions that matter and keeps a short tail."""
+
+    def debug(self, message: str) -> None:
+        if self._interesting(message):
+            DEBUG_TAIL.append(_scrub(message[:400]))
+
+    def info(self, message: str) -> None:
+        self.debug(message)
+
+    def warning(self, message: str) -> None:
+        DEBUG_TAIL.append(_scrub(message[:400]))
+
+    def error(self, message: str) -> None:
+        for line in message.splitlines():
+            DEBUG_TAIL.append(_scrub(line[:400]))
+
+    @staticmethod
+    def _interesting(message: str) -> bool:
+        lowered = message.lower()
+        return any(
+            word in lowered
+            for word in (
+                "pot",
+                "player response",
+                "skipping",
+                "format",
+                "bot",
+                "age",
+                "unavailable",
+                "player_client",
+                "visito",
+                "not a bot",
+                "warning",
+            )
+        )
+
+
+def _debug_options() -> Dict[str, Any]:
+    return {"logger": _CapturingLogger()}
+
+
 BASE_OPTIONS: Dict[str, Any] = {
     "format": FORMAT_STANDARD,
     "quiet": True,
     "no_warnings": True,
+    # Every yt-dlp verdict is captured by the capturing logger (never the
+    # console) so a failing remote deployment can explain itself via doctor.
+    "verbose": True,
     "noplaylist": True,
     "skip_download": True,
     # NOTE: internal retries removed — our _probe() already does 3-attempt
@@ -246,7 +304,7 @@ class StreamResolver:
         cache: Optional[StreamCache] = None,
         disk_cache: Optional[AudioDiskCache] = None,
     ) -> None:
-        self.options = {**BASE_OPTIONS, **_cookie_options()}
+        self.options = {**BASE_OPTIONS, **_cookie_options(), **_debug_options()}
         if overrides:
             self.options.update(overrides)
         self.cache = cache if cache is not None else StreamCache()
