@@ -335,3 +335,30 @@
     display: none;
   }
 }
+
+/* ----------------------------------------------------- auth + account --- */
+
+.orca-app--mobile .auth {
+  padding: 22px 20px 16px;
+}
+
+.orca-app--mobile .auth__tabs {
+  margin-bottom: 14px;
+}
+
+.orca-app--mobile .settings__palette {
+  grid-template-columns: 1fr;
+}
+
+.orca-app--mobile .settings__account {
+  flex-wrap: wrap;
+}
+
+.orca-app--mobile .settings__account--guest .settings__primarybtn,
+.orca-app--mobile .settings__ghostbtn {
+  min-height: 46px;
+}
+
+.orca-app--mobile .settings__credit-card {
+  padding: 14px 16px;
+}

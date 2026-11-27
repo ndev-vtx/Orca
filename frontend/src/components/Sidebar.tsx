@@ -1,12 +1,22 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import OrcaLogo from "./OrcaLogo";
 import LibraryPane from "./LibraryPane";
-import { HomeIcon, SearchIcon, LibraryIcon } from "./Icons";
+import { HomeIcon, SearchIcon, LibraryIcon, SettingsIcon } from "./Icons";
 import { useLibraryStore } from "../state/libraryStore";
+import { useAuthStore } from "../state/authStore";
+
+export function initialsFor(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
+}
 
 export default function Sidebar() {
   const collapsed = useLibraryStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useLibraryStore((s) => s.toggleSidebar);
+  const user = useAuthStore((s) => s.user);
+  const openAuth = useAuthStore((s) => s.openAuth);
   const navigate = useNavigate();
 
   return (
@@ -50,6 +60,43 @@ export default function Sidebar() {
       </nav>
 
       <LibraryPane />
+      <div className="sidebar__stack sidebar__stack--profile">
+        {collapsed ? (
+          <button
+            className="sidebar__profile sidebar__profile--compact"
+            onClick={() => navigate("/settings")}
+            title={user ? user.name : "Sign in"}
+            aria-label={user ? "Account settings" : "Sign in"}
+          >
+            {user ? (
+              <span className="sidebar__avatar">{initialsFor(user.name)}</span>
+            ) : (
+              <SettingsIcon size={18} />
+            )}
+          </button>
+        ) : user ? (
+          <button className="sidebar__profile" onClick={() => navigate("/settings")}>
+            <span className="sidebar__avatar">{initialsFor(user.name)}</span>
+            <span className="sidebar__profile-text">
+              <span className="sidebar__profile-name">{user.name}</span>
+              <span className="sidebar__profile-sub">{user.email}</span>
+            </span>
+          </button>
+        ) : (
+          <button
+            className="sidebar__profile sidebar__profile--signin"
+            onClick={() => openAuth("signin")}
+          >
+            <span className="sidebar__avatar sidebar__avatar--ghost">
+              <SettingsIcon size={16} />
+            </span>
+            <span className="sidebar__profile-text">
+              <span className="sidebar__profile-name">Sign in</span>
+              <span className="sidebar__profile-sub">Sync your library</span>
+            </span>
+          </button>
+        )}
+      </div>
     </aside>
   );
 }

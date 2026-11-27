@@ -1,4 +1,6 @@
 import type {
+  AuthProviders,
+  AuthResponse,
   FavoritesResponse,
   HomeSection,
   ImportResult,
@@ -7,6 +9,7 @@ import type {
   PlaylistSummary,
   SearchFilter,
   SongDto,
+  UserDto,
 } from "../types";
 
 const BASE = import.meta.env.VITE_API_BASE ?? "";
@@ -164,3 +167,53 @@ export interface AlbumResponse {
   cover: string;
   tracks: SongDto[];
 }
+
+
+/* ------------------------------------------------------------------ auth */
+
+export const AUTH_TOKEN_KEY = "orca.auth.token";
+
+export function storedToken(): string {
+  return localStorage.getItem(AUTH_TOKEN_KEY) ?? "";
+}
+
+function withAuth(init?: RequestInit): RequestInit {
+  const token = storedToken();
+  const headers = new Headers(init?.headers);
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  return { ...init, headers };
+}
+
+export interface AuthApi {
+  providers(): Promise<AuthProviders>;
+  signup(name: string, email: string, password: string, confirm: string, agreed: boolean): Promise<AuthResponse>;
+  login(email: string, password: string): Promise<AuthResponse>;
+  google(credential: string): Promise<AuthResponse>;
+  me(): Promise<UserDto | null>;
+  logout(): Promise<void>;
+}
+
+export const authApi: AuthApi = {
+  providers: () => request<AuthProviders>("/api/auth/providers"),
+  signup: (name, email, password, confirm, agreed) =>
+    post<AuthResponse>("/api/auth/signup", { name, email, password, confirmPassword: confirm, agreed }),
+  login: (email, password) => post<AuthResponse>("/api/auth/login", { email, password }),
+  google: (credential) => post<AuthResponse>("/api/auth/google", { credential }),
+  me: async () => {
+    if (!storedToken()) return null;
+    try {
+      const res = await request<{ user: UserDto }>("/api/auth/me", withAuth());
+      return res.user;
+    } catch {
+      return null;
+    }
+  },
+  logout: async () => {
+    try {
+      await request("/api/auth/logout", withAuth({ method: "POST" }));
+    } catch {
+      /* token already dead server-side */
+    }
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+  },
+};

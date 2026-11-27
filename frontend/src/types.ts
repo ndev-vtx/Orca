@@ -85,3 +85,21 @@ export interface BillboardPref {
   chart: BillboardChart;
   region: BillboardRegion;
 }
+
+export interface UserDto {
+  id: number;
+  name: string;
+  email: string;
+  avatar: string;
+  provider: string;
+}
+
+export interface AuthResponse {
+  token: string;
+  user: UserDto;
+}
+
+export interface AuthProviders {
+  google: boolean;
+  clientId: string;
+}

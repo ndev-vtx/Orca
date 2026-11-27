@@ -12,9 +12,12 @@ import AlbumPage from "./pages/AlbumPage";
 import QueuePage from "./pages/QueuePage";
 import SettingsPage from "./pages/SettingsPage";
 import NotFoundPage from "./pages/NotFoundPage";
+import AuthModal from "./components/AuthModal";
 import { usePlayerStore } from "./state/player";
 import { useLibraryStore } from "./state/libraryStore";
+import { useAuthStore } from "./state/authStore";
 import { useIsMobile } from "./utils/device";
+import { applySavedTheme } from "./utils/theme";
 import { useKeyboardShortcuts } from "./utils/shortcuts";
 import "./styles/theme.css";
 import "./styles/layout.css";
@@ -29,13 +32,17 @@ import "./styles/miniplayer.css";
 export default function App() {
   const loadLibrary = useLibraryStore((s) => s.loadLibrary);
   const bindEngine = usePlayerStore((s) => s.bindEngine);
+  const bootstrapAuth = useAuthStore((s) => s.bootstrap);
   const isMobile = useIsMobile();
   useKeyboardShortcuts();
 
   useEffect(() => {
+    // Saved accent must be applied at boot, not only when Settings mounts.
+    applySavedTheme();
     void loadLibrary();
     bindEngine();
-  }, [loadLibrary, bindEngine]);
+    void bootstrapAuth();
+  }, [loadLibrary, bindEngine, bootstrapAuth]);
 
   return (
     <BrowserRouter>
@@ -58,6 +65,7 @@ export default function App() {
         <NowPlayingBar />
         <LyricsPanel />
         {isMobile && <MobileNav />}
+        <AuthModal />
       </div>
     </BrowserRouter>
   );

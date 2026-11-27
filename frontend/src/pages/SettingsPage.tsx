@@ -1,19 +1,57 @@
 import { useEffect, useState } from "react";
 import { api } from "../services/api";
 import TopBar from "../components/TopBar";
+import { initialsFor } from "../components/Sidebar";
 import { useLibraryStore } from "../state/libraryStore";
 import { usePlayerStore } from "../state/player";
+import { useAuthStore } from "../state/authStore";
 import { loadPref, savePref } from "../utils/device";
+import {
+  applyPalette,
+  currentAccent,
+  DEFAULT_ACCENT,
+  DEFAULT_ACCENT_HOVER,
+} from "../utils/theme";
 import type { BillboardChart, BillboardPref, BillboardRegion } from "../types";
 
 const BILLBOARD_KEY = "orca.billboard";
 
-const PALETTES: { name: string; accent: string; hover: string }[] = [
-  { name: "Dolphin Blue", accent: "#4d6bfe", hover: "#6e8bff" },
-  { name: "Abyss Teal", accent: "#0fb9a9", hover: "#3fd6c8" },
-  { name: "Coral Reef", accent: "#ff5d5d", hover: "#ff8585" },
-  { name: "Bioluminescent", accent: "#c15cff", hover: "#d686ff" },
-  { name: "Golden Kelp", accent: "#f0a733", hover: "#ffc163" },
+const PALETTES: {
+  name: string;
+  accent: string;
+  hover: string;
+  description: string;
+}[] = [
+  {
+    name: "Dolphin Blue",
+    accent: "#4d6bfe",
+    hover: "#6e8bff",
+    description: "The classic Orca look — deep-sea electric blue.",
+  },
+  {
+    name: "Abyss Teal",
+    accent: "#0fb9a9",
+    hover: "#3fd6c8",
+    description: "Cold bioluminescence from the ocean floor.",
+  },
+  {
+    name: "Coral Reef",
+    accent: "#ff5d5d",
+    hover: "#ff8585",
+    description: "Warm current of the reef, vivid and loud.",
+  },
+  {
+    name: "Bioluminescent",
+    accent: "#c15cff",
+    hover: "#d686ff",
+    description: "Midnight glow of plankton under moonlight.",
+  },
+  {
+    name: "Golden Kelp",
+    accent: "#f0a733",
+    hover: "#ffc163",
+    description: "Sunlit kelp forest in shallow water.",
+  },
 ];
 
 const CHARTS: { value: BillboardChart; label: string }[] = [
@@ -51,27 +89,15 @@ export default function SettingsPage() {
   const [version, setVersion] = useState("");
   const loadLibrary = useLibraryStore((s) => s.loadLibrary);
   const notify = usePlayerStore((s) => s.notify);
+  const user = useAuthStore((s) => s.user);
+  const openAuth = useAuthStore((s) => s.openAuth);
+  const signOut = useAuthStore((s) => s.signOut);
 
   useEffect(() => {
     api
       .health()
       .then((h) => setVersion(h.version))
       .catch(() => setVersion(""));
-  }, []);
-
-  const applyPalette = (accent: string, hover: string) => {
-    document.documentElement.style.setProperty("--orca-accent", accent);
-    document.documentElement.style.setProperty("--orca-accent-hover", hover);
-    document.documentElement.style.setProperty(
-      "--orca-accent-glow",
-      `${accent}59`,
-    );
-  };
-
-  useEffect(() => {
-    const accent = loadPref("orca.accent", "#4d6bfe");
-    const hover = loadPref("orca.accentHover", "#6e8bff");
-    applyPalette(accent, hover);
   }, []);
 
   const updatePref = (next: BillboardPref) => {
@@ -89,6 +115,11 @@ export default function SettingsPage() {
     }
   };
 
+  const handleSignOut = async () => {
+    await signOut();
+    notify("Signed out");
+  };
+
   return (
     <div className="page">
       <TopBar title="Settings" />
@@ -97,24 +128,88 @@ export default function SettingsPage() {
         <h1 className="page__greeting">Settings</h1>
 
         <section className="settings__section">
-          <h2 className="settings__heading">Theme Palette</h2>
-          <p className="settings__hint">Pick the accent glow Orca swims in.</p>
-          <div className="settings__palette">
-            {PALETTES.map((p) => (
+          <h2 className="settings__heading">Account</h2>
+          {user ? (
+            <div className="settings__account">
+              {user.avatar ? (
+                <img className="settings__account-avatar" src={user.avatar} alt="" />
+              ) : (
+                <span className="settings__account-avatar settings__account-avatar--text">
+                  {initialsFor(user.name)}
+                </span>
+              )}
+              <div className="settings__account-info">
+                <span className="settings__account-name">{user.name}</span>
+                <span className="settings__account-email">{user.email}</span>
+                <span className="settings__account-provider">
+                  {user.provider === "google" ? "Signed in with Google" : "Email account"}
+                </span>
+              </div>
+              <button className="settings__ghostbtn" onClick={() => void handleSignOut()}>
+                Sign out
+              </button>
+            </div>
+          ) : (
+            <div className="settings__account settings__account--guest">
+              <div className="settings__account-info">
+                <span className="settings__account-name">Browsing as guest</span>
+                <span className="settings__account-email">
+                  Favorites and playlists stay on this device. Sign in to sync them.
+                </span>
+              </div>
               <button
-                key={p.accent}
-                className="settings__swatch"
-                style={{ background: p.accent }}
-                title={p.name}
-                aria-label={`${p.name} accent`}
-                onClick={() => {
-                  savePref("orca.accent", p.accent);
-                  savePref("orca.accentHover", p.hover);
-                  applyPalette(p.accent, p.hover);
-                }}
-              />
-            ))}
+                className="settings__primarybtn"
+                onClick={() => openAuth("signin")}
+              >
+                Sign in
+              </button>
+            </div>
+          )}
+        </section>
+
+        <section className="settings__section">
+          <h2 className="settings__heading">Theme Palette</h2>
+          <p className="settings__hint">
+            Pick the accent glow Orca swims in — applied across the whole app instantly.
+          </p>
+          <div className="settings__palette">
+            {PALETTES.map((p) => {
+              const active = currentAccent() === p.accent.toLowerCase();
+              return (
+                <button
+                  key={p.accent}
+                  className={`settings__swatch${active ? " settings__swatch--active" : ""}`}
+                  aria-pressed={active}
+                  aria-label={`${p.name} accent`}
+                  onClick={() => {
+                    savePref("orca.accent", p.accent);
+                    savePref("orca.accentHover", p.hover);
+                    applyPalette(p.accent, p.hover);
+                  }}
+                >
+                  <span
+                    className="settings__swatch-dot"
+                    style={{ background: p.accent }}
+                    aria-hidden="true"
+                  />
+                  <span className="settings__swatch-name">{p.name}</span>
+                  <span className="settings__swatch-desc">{p.description}</span>
+                </button>
+              );
+            })}
           </div>
+          {currentAccent() !== DEFAULT_ACCENT && (
+            <button
+              className="settings__ghostbtn settings__reset-accent"
+              onClick={() => {
+                savePref("orca.accent", DEFAULT_ACCENT);
+                savePref("orca.accentHover", DEFAULT_ACCENT_HOVER);
+                applyPalette(DEFAULT_ACCENT, DEFAULT_ACCENT_HOVER);
+              }}
+            >
+              Reset to Dolphin Blue
+            </button>
+          )}
         </section>
 
         <section className="settings__section">
@@ -181,12 +276,18 @@ export default function SettingsPage() {
           <h2 className="settings__heading">About &amp; Credits</h2>
           <p className="settings__hint">
             Orca — a deep, floating ocean of music. Streaming runs on YouTube Music
-            discovery, LRCLIB lyrics and the official YouTube player, with no accounts
-            and no API keys.
+            discovery, LRCLIB lyrics and the official YouTube player.
           </p>
-          <p className="settings__credit">
-            Created by <strong>Nguyễn Khôi Nguyên</strong>
-          </p>
+          <div className="settings__credit-card">
+            <span className="settings__credit-avatar" aria-hidden="true">
+              NKN
+            </span>
+            <span className="settings__credit-info">
+              <span className="settings__credit-name">Nguyễn Khôi Nguyên</span>
+              <span className="settings__credit-role">Coding / Developer</span>
+              <span className="settings__credit-sub">Creator of Orca</span>
+            </span>
+          </div>
         </section>
       </div>
     </div>

@@ -21,6 +21,8 @@ log = logging.getLogger(__name__)
 
 DB_FILENAME = "orca.db"
 
+TOKEN_TTL_S = 60 * 60 * 24 * 30  # bearer token lifetime: 30 days
+
 
 class OrcaStorage:
     """Manages SQLite database for user favorites and playback history."""
@@ -111,6 +113,29 @@ class OrcaStorage:
                 )
                 conn.execute(
                     "CREATE INDEX IF NOT EXISTS idx_playlist_tracks ON playlist_tracks(playlist_id, position);"
+                )
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS users (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL,
+                        email TEXT NOT NULL UNIQUE,
+                        password_hash TEXT,
+                        provider TEXT NOT NULL DEFAULT 'password',
+                        avatar TEXT DEFAULT '',
+                        created_at REAL NOT NULL
+                    );
+                    """
+                )
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS auth_tokens (
+                        token TEXT PRIMARY KEY,
+                        user_id INTEGER NOT NULL,
+                        created_at REAL NOT NULL,
+                        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+                    );
+                    """
                 )
 
                 # Schema migrations for existing databases
@@ -444,4 +469,92 @@ class OrcaStorage:
                     "UPDATE playlist_tracks SET position = ? WHERE rowid = ?;",
                     (idx, r[0]),
                 )
+            conn.commit()
+    # --------------------------------------------------------------------- users
+    def create_user(
+        self,
+        name: str,
+        email: str,
+        password_hash: Optional[str] = None,
+        provider: str = "password",
+        avatar: str = "",
+    ) -> Optional[Dict[str, Any]]:
+        """Create a user; returns the row dict or None when the email exists."""
+        email = (email or "").strip().lower()
+        with self._connection() as conn:
+            existing = conn.execute(
+                "SELECT id FROM users WHERE email = ?;", (email,)
+            ).fetchone()
+            if existing:
+                return None
+            cur = conn.execute(
+                """
+                INSERT INTO users (name, email, password_hash, provider, avatar, created_at)
+                VALUES (?, ?, ?, ?, ?, ?);
+                """,
+                (name.strip(), email, password_hash, provider, avatar, time.time()),
+            )
+            conn.commit()
+            return self.get_user(cur.lastrowid)
+
+    def get_user(self, user_id: int) -> Optional[Dict[str, Any]]:
+        with self._connection() as conn:
+            row = conn.execute("SELECT * FROM users WHERE id = ?;", (user_id,)).fetchone()
+            return dict(row) if row else None
+
+    def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        email = (email or "").strip().lower()
+        with self._connection() as conn:
+            row = conn.execute("SELECT * FROM users WHERE email = ?;", (email,)).fetchone()
+            return dict(row) if row else None
+
+    def update_user(
+        self,
+        user_id: int,
+        name: Optional[str] = None,
+        avatar: Optional[str] = None,
+        password_hash: Optional[str] = None,
+        provider: Optional[str] = None,
+    ) -> None:
+        """Patch profile columns; None leaves a column unchanged."""
+        sets: List[str] = []
+        args: List[Any] = []
+        for column, value in (
+            ("name", name),
+            ("avatar", avatar),
+            ("password_hash", password_hash),
+            ("provider", provider),
+        ):
+            if value is not None:
+                sets.append(f"{column} = ?")
+                args.append(value)
+        if not sets:
+            return
+        args.append(user_id)
+        with self._connection() as conn:
+            conn.execute(f"UPDATE users SET {', '.join(sets)} WHERE id = ?;", args)
+            conn.commit()
+
+    def save_token(self, token: str, user_id: int) -> None:
+        with self._connection() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO auth_tokens (token, user_id, created_at) VALUES (?, ?, ?);",
+                (token, user_id, time.time()),
+            )
+            conn.commit()
+
+    def user_id_for_token(self, token: str) -> Optional[int]:
+        """Resolve a bearer token, enforcing the token TTL."""
+        cutoff = time.time() - TOKEN_TTL_S
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT user_id, created_at FROM auth_tokens WHERE token = ?;", (token,)
+            ).fetchone()
+        if not row or row["created_at"] < cutoff:
+            return None
+        return int(row["user_id"])
+
+    def delete_token(self, token: str) -> None:
+        with self._connection() as conn:
+            conn.execute("DELETE FROM auth_tokens WHERE token = ?;", (token,))
             conn.commit()

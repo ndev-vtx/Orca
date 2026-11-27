@@ -29,7 +29,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import Scope
 
-from . import __version__, doctor
+from . import __version__, doctor, auth as orca_auth
 from .catalog import CatalogSource
 from .config import (
     APP_NAME,
@@ -44,6 +44,8 @@ from .lyrics import fetch_lrclib, parse_lrc
 from .models import Song
 from .schemas import (
     AddTracksRequest,
+    AuthProvidersResponse,
+    AuthResponse,
     BroadcastResponse,
     CreatePlaylistRequest,
     DoctorResponse,
@@ -51,12 +53,14 @@ from .schemas import (
     ExportResponse,
     FavoriteStatusResponse,
     FavoritesResponse,
+    GoogleAuthRequest,
     HealthResponse,
     HistoryResponse,
     HomeResponse,
     HomeSection,
     ImportRequest,
     ImportResponse,
+    LoginRequest,
     LyricsResponse,
     NowPlayingRequest,
     PlaylistDetail,
@@ -65,7 +69,9 @@ from .schemas import (
     ResolveProxyResponse,
     ResolveRequest,
     ResolveResponse,
+    SignupRequest,
     SongDto,
+    UserDto,
 )
 from .storage import OrcaStorage
 from .stream import StreamResolver, ytdlp_age_days, ytdlp_version
@@ -256,6 +262,111 @@ def create_app() -> FastAPI:
     @app.get("/api/doctor", response_model=DoctorResponse)
     def doctor_report() -> DoctorResponse:
         return DoctorResponse(lines=doctor.collect())
+
+    # --------------------------------------------------------------- auth
+    def bearer_token(request: Request) -> Optional[str]:
+        header = request.headers.get("authorization", "")
+        if header.lower().startswith("bearer "):
+            return header[7:].strip()
+        return None
+
+    def current_user(request: Request, storage: OrcaStorage) -> Optional[Dict[str, Any]]:
+        """Resolve the signed-in user from the Authorization header."""
+        token = bearer_token(request)
+        if not token:
+            return None
+        user_id = storage.user_id_for_token(token)
+        if user_id is None:
+            return None
+        return storage.get_user(user_id)
+
+    def user_dto(row: Dict[str, Any]) -> "UserDto":
+        return UserDto(
+            id=row["id"],
+            name=row["name"],
+            email=row["email"],
+            avatar=row.get("avatar") or "",
+            provider=row.get("provider") or "password",
+        )
+
+    @app.get("/api/auth/providers", response_model=AuthProvidersResponse)
+    def auth_providers() -> AuthProvidersResponse:
+        client_id = orca_auth.google_client_id()
+        return AuthProvidersResponse(google=bool(client_id), clientId=client_id)
+
+    @app.post("/api/auth/signup", response_model=AuthResponse)
+    def auth_signup(
+        payload: SignupRequest, storage: OrcaStorage = Depends(deps["storage"])
+    ) -> AuthResponse:
+        problem = orca_auth.valid_signup(
+            payload.name, payload.email, payload.password, payload.confirm, payload.agreed
+        )
+        if problem:
+            raise HTTPException(status_code=400, detail=problem)
+        row = storage.create_user(
+            payload.name,
+            payload.email,
+            password_hash=orca_auth.hash_password(payload.password),
+            provider="password",
+        )
+        if row is None:
+            raise HTTPException(status_code=409, detail="an account with that email already exists")
+        token = orca_auth.new_token()
+        storage.save_token(token, row["id"])
+        return AuthResponse(token=token, user=user_dto(row))
+
+    @app.post("/api/auth/login", response_model=AuthResponse)
+    def auth_login(
+        payload: LoginRequest, storage: OrcaStorage = Depends(deps["storage"])
+    ) -> AuthResponse:
+        row = storage.get_user_by_email(payload.email)
+        if not row or not orca_auth.verify_password(payload.password, row.get("password_hash")):
+            raise HTTPException(status_code=401, detail="email or password is incorrect")
+        token = orca_auth.new_token()
+        storage.save_token(token, row["id"])
+        return AuthResponse(token=token, user=user_dto(row))
+
+    @app.post("/api/auth/google", response_model=AuthResponse)
+    def auth_google(
+        payload: GoogleAuthRequest, storage: OrcaStorage = Depends(deps["storage"])
+    ) -> AuthResponse:
+        claims = orca_auth.verify_google_id_token(payload.credential)
+        if not claims:
+            raise HTTPException(status_code=401, detail="Google sign-in could not be verified")
+        email = str(claims.get("email") or "")
+        name = str(claims.get("name") or email.split("@")[0] or "Orca listener")
+        avatar = str(claims.get("picture") or "")
+        row = storage.get_user_by_email(email)
+        if row is None:
+            row = storage.create_user(name, email, provider="google", avatar=avatar)
+            if row is None:  # race: another request created it first
+                row = storage.get_user_by_email(email)
+        else:
+            storage.update_user(row["id"], name=name, avatar=avatar, provider="google")
+            row = storage.get_user(row["id"])
+        if row is None:
+            raise HTTPException(status_code=500, detail="account could not be created")
+        token = orca_auth.new_token()
+        storage.save_token(token, row["id"])
+        return AuthResponse(token=token, user=user_dto(row))
+
+    @app.get("/api/auth/me")
+    def auth_me(
+        request: Request, storage: OrcaStorage = Depends(deps["storage"])
+    ) -> Dict[str, Any]:
+        row = current_user(request, storage)
+        if not row:
+            raise HTTPException(status_code=401, detail="not signed in")
+        return {"user": user_dto(row)}
+
+    @app.post("/api/auth/logout")
+    def auth_logout(
+        request: Request, storage: OrcaStorage = Depends(deps["storage"])
+    ) -> Dict[str, Any]:
+        token = bearer_token(request)
+        if token:
+            storage.delete_token(token)
+        return {"ok": True}
 
     # ------------------------------------------------------------- catalog
     @app.get("/api/search", response_model=List[SongDto])

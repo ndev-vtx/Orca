@@ -154,3 +154,40 @@ class HealthResponse(BaseModel):
 
 class DoctorResponse(BaseModel):
     lines: List[str]
+
+
+class UserDto(BaseModel):
+    id: int
+    name: str
+    email: str
+    avatar: str = ""
+    provider: str = "password"
+
+
+class AuthResponse(BaseModel):
+    token: str
+    user: UserDto
+
+
+class SignupRequest(BaseModel):
+    name: str = Field(min_length=1)
+    email: str = Field(min_length=3)
+    password: str = Field(min_length=1)
+    confirm: str = Field(default="", alias="confirmPassword")
+    agreed: bool = False
+    model_config = {"populate_by_name": True}
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class GoogleAuthRequest(BaseModel):
+    credential: str
+
+
+class AuthProvidersResponse(BaseModel):
+    google: bool = False
+    client_id: str = Field(default="", alias="clientId")
+    model_config = {"populate_by_name": True}
