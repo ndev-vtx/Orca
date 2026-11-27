@@ -55,3 +55,43 @@ def test_remix_titles_are_demoted_not_dropped():
 def test_remember_and_members_only_untouched():
     assert not _is_junk(song("Members Only", "3:21"))
     assert not _is_junk(song("I Remember You", "3:10"))
+
+
+def test_podcast_episodes_are_dropped():
+    from orca.catalog import CatalogSource
+
+    episode = CatalogSource._build(
+        {"videoId": "pod1", "title": "All I want for Christmas is you! - December 22nd", "resultType": "episode"}
+    )
+    assert episode is None
+    home_podcast = CatalogSource._build(
+        {"videoId": "pod2", "title": "Music talk #12", "category": "Episodes for you"}
+    )
+    assert home_podcast is None
+
+
+def test_allcaps_spam_artist_is_demoted_not_dropped():
+    from orca.catalog import _spam_penalty
+
+    clean = Song(video_id="a", title="All I Want for Christmas Is You", artist="Mariah Carey", duration="4:02")
+    spam = Song(video_id="b", title="All I Want for Christmas Is You", artist="BBY WOW", duration="3:55")
+    assert _spam_penalty(spam) >= 3
+    assert _spam_penalty(clean) == 0
+    out = _clean_songs([spam, clean])
+    assert out[0].artist == "Mariah Carey"
+    # Demoted but still present.
+    assert any(s.artist == "BBY WOW" for s in out)
+
+
+def test_short_allcaps_artists_not_penalized():
+    from orca.catalog import _spam_penalty
+
+    assert _spam_penalty(Song(video_id="c", title="Dynamite", artist="BTS", duration="3:19")) == 0
+
+
+def test_video_results_rank_below_catalog_songs():
+    clean = Song(video_id="d", title="All I Want for Christmas Is You", artist="Mariah Carey", duration="4:02", type="song")
+    ugc = Song(video_id="e", title="All I Want for Christmas Is You", artist="Mariah Carey", duration="4:57", type="video")
+    out = _clean_songs([ugc, clean])
+    assert out[0].type == "song"
+    assert any(s.type == "video" for s in out)

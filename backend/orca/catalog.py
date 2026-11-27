@@ -46,6 +46,33 @@ _SPAM_TITLE_RE = re.compile(
 )
 _MIN_TRACK_SECONDS = 90
 
+# Podcast episodes and profile cards are not music: they slip through with
+# "unknown artist" and render as playable songs. Dropped outright.
+_NON_MUSIC_TYPES = {"episode", "podcast", "profile", "ebook"}
+
+# Cover/spam channels love shouting their name in caps ("BBY WOW"), while
+# real releases on the YT Music catalog keep normal capitalization. Demote
+# (never drop) so legitimate all-caps acts stay findable.
+_ALLCAPS_ARTIST_MIN = 10
+
+
+def _is_allcaps_spam_artist(artist: str) -> bool:
+    text = (artist or "").strip()
+    if not text:
+        return False
+    upper = text.upper()
+    if text != upper:
+        return False
+    letters = [c for c in text if c.isalpha()]
+    if len(letters) < 4 or any(not c.isalpha() and c.isalnum() for c in text):
+        return False
+    # Multi-word shouty names are almost always spam; very long single-word
+    # ones (>= 10 letters, e.g. not BTS/ITZY) too. Official suffixes exempt.
+    joined = text.replace(" ", "").replace(".", "")
+    if "VEVO" in text or text.endswith(" - TOPIC"):
+        return False
+    return " " in text or len(joined) >= _ALLCAPS_ARTIST_MIN
+
 
 def _duration_seconds(duration: str) -> int:
     parts = [p for p in str(duration or "").strip().split(":") if p.strip().isdigit()]
@@ -65,7 +92,15 @@ def _is_junk(song: Song) -> bool:
 
 
 def _spam_penalty(song: Song) -> int:
-    return 1 if _SPAM_TITLE_RE.search(song.title) else 0
+    penalty = 1 if _SPAM_TITLE_RE.search(song.title) else 0
+    if _is_allcaps_spam_artist(song.artist):
+        penalty += 3
+    # Official YT Music catalog entries outrank UGC video uploads with the
+    # same title (covers, re-uploads, sped-up copies) — demote videos, keep
+    # them reachable.
+    if song.type == "video":
+        penalty += 1
+    return penalty
 
 
 def _clean_songs(songs: List[Song]) -> List[Song]:
@@ -534,8 +569,12 @@ class CatalogSource:
         if not isinstance(item, dict):
             return None
             
-        result_type = item.get("resultType") or "song"
+        result_type = str(item.get("resultType") or "song").strip().lower()
+        if result_type in _NON_MUSIC_TYPES:
+            return None
         category = str(item.get("category", "")).lower()
+        if "episode" in category or "podcast" in category or "short" in category:
+            return None
         if "artist" in category or "profiles" in category:
             result_type = "artist"
         elif "playlist" in category or "albums" in category:

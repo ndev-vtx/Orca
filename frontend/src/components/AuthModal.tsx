@@ -74,7 +74,6 @@ export default function AuthModal() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState("");
   const [googleReady, setGoogleReady] = useState(false);
   const [googleBlocked, setGoogleBlocked] = useState(false);
@@ -158,11 +157,7 @@ export default function AuthModal() {
       setError("Passwords do not match.");
       return;
     }
-    if (!agreed) {
-      setError("Please agree to the Terms of Service and Privacy Policy.");
-      return;
-    }
-    const err = await signUp(trimmedName, trimmedEmail, password, confirm, agreed);
+    const err = await signUp(trimmedName, trimmedEmail, password, confirm, true);
     if (err) setError(err);
   };
 
@@ -361,17 +356,6 @@ export default function AuthModal() {
               onChange={(e) => setConfirm(e.target.value)}
               placeholder="Repeat your password"
             />
-            <label className="auth__agree">
-              <input
-                type="checkbox"
-                checked={agreed}
-                onChange={(e) => setAgreed(e.target.checked)}
-              />
-              <span>
-                I agree to the <strong>Terms of Service</strong> and{" "}
-                <strong>Privacy Policy</strong>.
-              </span>
-            </label>
             {error && <p className="auth__error">{error}</p>}
             <button className="auth__submit" type="submit" disabled={busy}>
               {busy ? "Creating account…" : "Create account"}
