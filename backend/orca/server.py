@@ -448,6 +448,18 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=502, detail="home feed unavailable")
         return HomeResponse(sections=sections)
 
+    @app.get("/api/track/{video_id}")
+    def track_detail(
+        video_id: str,
+        catalog: CatalogSource = Depends(deps["catalog"]),
+    ) -> Dict[str, Any]:
+        detail = catalog.track(video_id)
+        if not detail:
+            raise HTTPException(status_code=404, detail="track not found")
+        song = detail.pop("song", None)
+        detail["song"] = _song_dto(song) if song else None
+        return detail
+
     @app.get("/api/similar/{video_id}", response_model=List[SongDto])
     def similar(
         video_id: str,

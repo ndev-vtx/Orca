@@ -1,6 +1,6 @@
 import TopBar from "../components/TopBar";
 import { MusicTile } from "../components/Shared";
-import { PauseIcon, PlayIcon } from "../components/Icons";
+import { CloseIcon, PauseIcon, PlayIcon } from "../components/Icons";
 import { usePlayerStore } from "../state/player";
 
 export default function QueuePage() {
@@ -9,9 +9,11 @@ export default function QueuePage() {
   const current = usePlayerStore((s) => s.current);
   const playing = usePlayerStore((s) => s.playing);
   const playAt = usePlayerStore((s) => s.playAt);
+  const removeFromQueue = usePlayerStore((s) => s.removeFromQueue);
   const shuffleUpcoming = usePlayerStore((s) => s.shuffleUpcoming);
   const autoQueue = usePlayerStore((s) => s.autoQueue);
   const setAutoQueue = usePlayerStore((s) => s.setAutoQueue);
+  const clearQueue = usePlayerStore((s) => s.clearQueue);
 
   const currentIdx = current
     ? queue.findIndex((t) => t.videoId === current.videoId)
@@ -43,6 +45,14 @@ export default function QueuePage() {
               onClick={() => setAutoQueue(!autoQueue)}
             >
               Auto radio {autoQueue ? "on" : "off"}
+            </button>
+            <button
+              className="pill"
+              onClick={clearQueue}
+              disabled={cursor + 1 >= queue.length}
+              title="Remove upcoming tracks from the queue"
+            >
+              Clear queue
             </button>
           </div>
         </div>
@@ -76,7 +86,13 @@ export default function QueuePage() {
             <h2 className="section__title">Up next</h2>
             <div className="tracktable">
               {queue.slice(currentIdx + 1).map((t, i) => (
-                <QueueRow key={`next-${t.videoId}-${i}`} track={t} index={i + currentIdx + 1} onPlay={playAt} />
+                <QueueRow
+                  key={`next-${t.videoId}-${i}`}
+                  track={t}
+                  index={i + currentIdx + 1}
+                  onPlay={playAt}
+                  onRemove={() => removeFromQueue(i + currentIdx + 1)}
+                />
               ))}
             </div>
           </>
@@ -98,11 +114,13 @@ function QueueRow({
   track,
   index,
   onPlay,
+  onRemove,
   showState = false,
 }: {
   track: { videoId: string; title: string; artist: string; duration: string; artworkUrl: string };
   index: number;
   onPlay: (index: number) => void;
+  onRemove?: () => void;
   showState?: boolean;
 }) {
   return (
@@ -129,6 +147,19 @@ function QueueRow({
       <span className="tracktable__cue" aria-hidden="true">
         <PlayIcon size={13} />
       </span>
+      {onRemove && (
+        <button
+          className="bar__ctrl tracktable__more"
+          aria-label={`Remove ${track.title} from queue`}
+          title="Remove from queue"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove();
+          }}
+        >
+          <CloseIcon size={13} />
+        </button>
+      )}
     </div>
   );
 }

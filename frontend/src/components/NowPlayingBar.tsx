@@ -2,14 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import {
-  HeartIcon,
-  HeartOutlineIcon,
   LyricsIcon,
   MuteIcon,
   NextIcon,
   PauseIcon,
   PipIcon,
   PlayIcon,
+  PlusIcon,
   PrevIcon,
   QueueIcon,
   RepeatIcon,
@@ -19,7 +18,7 @@ import {
 } from "./Icons";
 import { MusicTile } from "./Shared";
 import { formatTime, usePlayerStore } from "../state/player";
-import { useLibraryStore } from "../state/libraryStore";
+import { useUiStore } from "../state/uiStore";
 import { activePip, canDocumentPip, openPipWindow } from "../services/pip";
 import { useIsMobile } from "../utils/device";
 import MiniPlayer from "./MiniPlayer";
@@ -73,10 +72,7 @@ export default function NowPlayingBar() {
   const [fallbackOpen, setFallbackOpen] = useState(false);
   const pipOpen = pipWin !== null || fallbackOpen;
 
-  const saved = useLibraryStore((s) =>
-    current ? s.savedIds.has(current.videoId) : false,
-  );
-  const toggleSaved = useLibraryStore((s) => s.toggleSaved);
+  const openPicker = useUiStore((s) => s.openPicker);
 
   const duration = durationMs > 0 ? durationMs : 0;
   const seekPercent = duration > 0 ? Math.min(100, (positionMs / duration) * 100) : 0;
@@ -140,6 +136,21 @@ export default function NowPlayingBar() {
     setFallbackOpen(true);
   };
 
+  // Desktop: auto-open the mini-player when the user switches tabs while
+  // music is playing (never while paused — manual button only then).
+  useEffect(() => {
+    if (isMobile) return;
+    const onVisibility = () => {
+      if (document.visibilityState !== "hidden") return;
+      const st = usePlayerStore.getState();
+      if (!st.playing || pipOpen) return;
+      if (!canDocumentPip()) return; // graceful: browsers that block auto-open just keep playing in-tab
+      void togglePip();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  });
+
   return (
     <footer className="bar" aria-label="Now playing">
       {notice && (
@@ -182,12 +193,12 @@ export default function NowPlayingBar() {
         </div>
         {current && (
           <button
-            className={`bar__heart${saved ? " bar__heart--on" : ""}`}
-            aria-label={saved ? "Remove from your library" : "Save to your library"}
-            title={saved ? "Remove from your library" : "Save to your library"}
-            onClick={() => void toggleSaved(current)}
+            className="bar__heart"
+            aria-label="Add to playlist"
+            title="Add to playlist"
+            onClick={() => openPicker(current)}
           >
-            {saved ? <HeartIcon size={16} /> : <HeartOutlineIcon size={16} />}
+            <PlusIcon size={16} />
           </button>
         )}
       </div>

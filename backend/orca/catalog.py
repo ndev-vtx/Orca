@@ -278,6 +278,64 @@ class CatalogSource:
             "tracks": tracks,
         }
 
+    def track(self, video_id: str) -> Dict[str, Any]:
+        """Single-track metadata + credits for the track detail view."""
+        video_id = (video_id or "").strip()
+        if not video_id:
+            return {}
+
+        def _do_track() -> Dict[str, Any]:
+            return self.api.get_song(video_id)
+
+        try:
+            data = _with_retry(
+                _do_track,
+                max_attempts=2,
+                base_delay=0.5,
+                operation_name=f"track({video_id})",
+            )
+        except Exception as exc:
+            log.warning("track lookup failed for %s: %s", video_id, exc)
+            return {}
+        if not isinstance(data, dict):
+            return {}
+
+        details = data.get("videoDetails") if isinstance(data.get("videoDetails"), dict) else data
+        title = html.unescape(str(details.get("title") or "")).strip()
+        author = _artist_line(details)
+        seconds = 0
+        try:
+            seconds = int(details.get("lengthSeconds") or details.get("duration_seconds") or 0)
+        except (TypeError, ValueError):
+            seconds = 0
+        duration = f"{seconds // 60}:{seconds % 60:02d}" if seconds > 0 else ""
+        item = {**details, "resultType": "song", "artist": author}
+        song = self._build(item, duration_key="duration")
+        if song is not None and duration:
+            song.duration = duration
+
+        album = details.get("album")
+        album_name = ""
+        album_id = ""
+        if isinstance(album, dict):
+            album_name = str(album.get("name") or "")
+            album_id = str(album.get("id") or album.get("browseId") or "")
+        year = str(details.get("year") or details.get("publishDate") or "")[:4]
+        channel = str(details.get("author") or details.get("channelId") or "")
+
+        return {
+            "videoId": video_id,
+            "title": title or (song.title if song else "Unknown track"),
+            "artist": author,
+            "duration": duration,
+            "artworkUrl": song.artwork_url if song else _artwork_url(details),
+            "album": album_name,
+            "albumId": album_id,
+            "year": year,
+            "credits": {"channel": channel, "source": "YouTube Music"},
+            "song": song.to_dict() if song is not None else None,
+        }
+
     def similar(self, seed_id: str, limit: int = 26) -> List[Song]:
         """Tracks the recommendation graph puts next to `seed_id`. Best effort."""
         related: List[Song] = []

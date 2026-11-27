@@ -1,8 +1,8 @@
 import type { SongDto } from "../types";
 import { useNavigate } from "react-router-dom";
-import { useLibraryStore } from "../state/libraryStore";
+import { useUiStore } from "../state/uiStore";
 import { usePlayerStore } from "../state/player";
-import { PlayIcon, PauseIcon, HeartIcon, HeartOutlineIcon } from "./Icons";
+import { PlayIcon, PauseIcon, MoreIcon, PlusIcon } from "./Icons";
 
 interface MediaCardProps {
   song: SongDto;
@@ -33,8 +33,8 @@ export default function MediaCard({
   context = "manual",
 }: MediaCardProps) {
   const navigate = useNavigate();
-  const saved = useLibraryStore((s) => s.savedIds.has(song.videoId));
-  const toggleSaved = useLibraryStore((s) => s.toggleSaved);
+  const openMenu = useUiStore((s) => s.openMenu);
+  const openPicker = useUiStore((s) => s.openPicker);
   const currentId = usePlayerStore((s) => s.current?.videoId ?? null);
   const playing = usePlayerStore((s) => s.playing);
   const play = usePlayerStore((s) => s.play);
@@ -102,17 +102,36 @@ export default function MediaCard({
           <span
             role="button"
             tabIndex={0}
-            className={`card__heart${saved ? " card__heart--on" : ""}`}
-            aria-label={saved ? `Remove ${song.title} from library` : `Save ${song.title} to library`}
+            className="card__heart"
+            aria-label={`Add ${song.title} to playlist`}
+            title="Add to playlist"
             onClick={(e) => {
               e.stopPropagation();
-              void toggleSaved(song);
+              openPicker(song);
             }}
             onKeyDown={(e) => {
               e.stopPropagation();
             }}
           >
-            {saved ? <HeartIcon size={15} /> : <HeartOutlineIcon size={15} />}
+            <PlusIcon size={15} />
+          </span>
+        )}
+        {!isAlbum && (
+          <span
+            role="button"
+            tabIndex={0}
+            className="card__more"
+            aria-label={`More options for ${song.title}`}
+            title="More options"
+            onClick={(e) => {
+              e.stopPropagation();
+              openMenu(song, { x: e.clientX, y: e.clientY });
+            }}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+            }}
+          >
+            <MoreIcon size={15} />
           </span>
         )}
       </div>

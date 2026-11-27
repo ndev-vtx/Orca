@@ -1,21 +1,23 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../services/api";
 import type { PlaylistDetail } from "../types";
 import TopBar from "../components/TopBar";
-import { PlayIcon, PauseIcon, HeartIcon, HeartOutlineIcon, TrashIcon } from "../components/Icons";
+import { PlayIcon, PauseIcon, MoreIcon, TrashIcon } from "../components/Icons";
 import { MusicTile } from "../components/Shared";
 import { useLibraryStore } from "../state/libraryStore";
 import { usePlayerStore } from "../state/player";
+import { useUiStore } from "../state/uiStore";
 
 export default function PlaylistPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const playlistId = Number(id);
   const [detail, setDetail] = useState<PlaylistDetail | null>(null);
   const [error, setError] = useState("");
   const savedIds = useLibraryStore((s) => s.savedIds);
-  const toggleSaved = useLibraryStore((s) => s.toggleSaved);
   const deletePlaylist = useLibraryStore((s) => s.deletePlaylist);
+  const openMenu = useUiStore((s) => s.openMenu);
   const play = usePlayerStore((s) => s.play);
   const currentId = usePlayerStore((s) => s.current?.videoId ?? null);
   const playing = usePlayerStore((s) => s.playing);
@@ -48,6 +50,11 @@ export default function PlaylistPage() {
 
   const savedCount = detail ? detail.tracks.filter((t) => savedIds.has(t.videoId)).length : 0;
 
+  const removePlaylist = async () => {
+    await deletePlaylist(playlistId);
+    navigate("/library");
+  };
+
   return (
     <div className="page">
       <TopBar title={detail?.name ?? "Playlist"} />
@@ -75,7 +82,7 @@ export default function PlaylistPage() {
                     <PlayIcon size={16} />
                   )}
                 </button>
-                <button className="bar__ctrl" aria-label="Delete playlist" title="Delete playlist" onClick={() => void deletePlaylist(playlistId)}>
+                <button className="bar__ctrl" aria-label="Delete playlist" title="Delete playlist" onClick={() => void removePlaylist()}>
                   <TrashIcon size={16} />
                 </button>
               </div>
@@ -87,10 +94,9 @@ export default function PlaylistPage() {
           <div className="tracktable">
             {detail.tracks.length === 0 && <p className="page__note">This playlist is empty.</p>}
             {detail.tracks.map((t, i) => {
-              const saved = savedIds.has(t.videoId);
               return (
                 <div
-                  key={t.videoId}
+                  key={`${t.videoId}-${i}`}
                   className={`tracktable__row${currentId === t.videoId ? " tracktable__row--active" : ""}`}
                   role="button"
                   tabIndex={0}
@@ -107,11 +113,15 @@ export default function PlaylistPage() {
                   </span>
                   <span className="tracktable__dur">{t.duration}</span>
                   <button
-                    className={`bar__heart${saved ? " bar__heart--on" : ""}`}
-                    aria-label={saved ? "Remove from library" : "Save to library"}
-                    onClick={() => void toggleSaved(t)}
+                    className="bar__ctrl tracktable__more"
+                    aria-label={`More options for ${t.title}`}
+                    title="More options"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openMenu(t, { x: e.clientX, y: e.clientY }, playlistId);
+                    }}
                   >
-                    {saved ? <HeartIcon size={15} /> : <HeartOutlineIcon size={15} />}
+                    <MoreIcon size={15} />
                   </button>
                 </div>
               );

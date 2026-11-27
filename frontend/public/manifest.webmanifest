@@ -1,0 +1,26 @@
+{
+  "name": "Orca",
+  "short_name": "Orca",
+  "description": "Orca — a deep, floating ocean of music. Stream instantly, keep your library close.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#05070C",
+  "theme_color": "#000000",
+  "categories": ["music", "entertainment"],
+  "icons": [
+    {
+      "src": "/orca-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/orca-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

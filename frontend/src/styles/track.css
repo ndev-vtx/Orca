@@ -1,0 +1,441 @@
+/*
+ * Track detail page, three-dot context menu, "Add to playlist" picker and the
+ * desktop Now Playing / Credits panel. Dark Orca surfaces + #4D6BFE accents.
+ */
+
+/* ---------- Track detail header ---------- */
+.trackhead {
+  display: flex;
+  gap: 24px;
+  align-items: flex-end;
+  padding: 32px 0 24px;
+}
+.trackhead__cover,
+.trackhead__cover img {
+  width: 220px;
+  height: 220px;
+  border-radius: var(--orca-radius);
+  object-fit: cover;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.65);
+  flex-shrink: 0;
+}
+.trackhead__meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.trackhead__badge {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--orca-text);
+}
+.trackhead__title {
+  margin: 0;
+  font-size: clamp(28px, 5vw, 56px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  color: var(--orca-text);
+  overflow-wrap: anywhere;
+}
+.trackhead__sub {
+  margin: 0;
+  color: var(--orca-text-dim);
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.trackhead__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+.trackhead__actions .btn-play {
+  width: 52px;
+  height: 52px;
+}
+.pill--icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+}
+.pill--icon.pill--active {
+  color: var(--orca-accent);
+  border-color: var(--orca-accent);
+  background: rgba(77, 107, 254, 0.14);
+}
+
+/* ---------- Lyrics + suggestions sections ---------- */
+.tracklyrics {
+  margin-top: 20px;
+}
+.tracklyrics__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.tracklyrics__body {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 16px 18px;
+  border-radius: var(--orca-radius);
+  background: var(--orca-surface);
+  scrollbar-width: thin;
+}
+.tracklyrics__body .lyrics__line {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px 0;
+}
+.tracksimilar {
+  margin-top: 28px;
+}
+
+/* ---------- Three-dot context menu ---------- */
+.ctxmenu {
+  position: fixed;
+  z-index: 400;
+  width: 236px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--orca-surface-raised, #1a1a1a);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.7);
+  animation: ctxmenu-in 120ms ease-out;
+}
+@keyframes ctxmenu-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.ctxmenu__title {
+  margin: 0;
+  padding: 8px 10px 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--orca-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ctxmenu__item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 9px 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--orca-text-dim);
+  font-size: 13px;
+  cursor: pointer;
+}
+.ctxmenu__item:hover {
+  background: var(--orca-surface-hover, #282828);
+  color: var(--orca-text);
+}
+.ctxmenu__item--danger {
+  color: #ff6b6b;
+}
+.ctxmenu__item--danger:hover {
+  background: rgba(255, 107, 107, 0.12);
+  color: #ff8585;
+}
+.ctxmenu__hint {
+  padding: 6px 10px 4px;
+  font-size: 12px;
+  color: var(--orca-text-dim);
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  margin-top: 6px;
+  padding-top: 8px;
+}
+
+/* ---------- Add-to-playlist picker ---------- */
+.picker-overlay {
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+}
+.picker {
+  width: min(420px, 94vw);
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.picker__track {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 0 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.picker__track img {
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+.picker__empty {
+  text-align: center;
+  padding: 22px 10px;
+}
+.picker__empty-title {
+  margin: 0 0 6px;
+  font-weight: 700;
+  color: var(--orca-text);
+}
+.picker__empty-sub {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--orca-text-dim);
+}
+.picker__create-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 9px 18px;
+  background: var(--orca-accent);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+.picker__create-btn:hover {
+  background: var(--orca-accent-hover);
+}
+.picker__new {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+.picker__new-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.picker__new-btn {
+  background: none;
+  border: none;
+  color: var(--orca-accent);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 0;
+}
+.picker__new-btn:hover {
+  color: var(--orca-accent-hover);
+}
+.picker__list {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.picker__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--orca-text);
+  font-size: 14px;
+  cursor: pointer;
+  text-align: left;
+}
+.picker__row:hover {
+  background: var(--orca-surface-hover, #282828);
+}
+.picker__row-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.picker__row-count {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--orca-text-dim);
+}
+
+/* ---------- Track table menu button ---------- */
+.tracktable__more {
+  opacity: 0;
+  transition: opacity 120ms ease;
+  color: var(--orca-text-dim);
+}
+.tracktable__row:hover .tracktable__more,
+.tracktable__row:focus-within .tracktable__more {
+  opacity: 1;
+}
+.tracktable__more:hover {
+  color: var(--orca-text);
+}
+
+/* ---------- Desktop Now Playing / Credits panel ---------- */
+.orca-app__panes {
+  align-items: stretch;
+}
+.np-panel {
+  width: 300px;
+  flex-shrink: 0;
+  border-radius: var(--orca-radius);
+  background: var(--orca-surface, #121212);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+  max-height: calc(100vh - var(--orca-bar-h, 88px) - var(--orca-gap, 8px) * 2);
+  transition: width 160ms ease;
+}
+.np-panel--closed {
+  width: 52px;
+  overflow: hidden;
+}
+.np-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.np-panel__kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--orca-text-dim);
+}
+.np-panel--closed .np-panel__kicker {
+  display: none;
+}
+.np-panel__fold {
+  border: none;
+  background: none;
+  color: var(--orca-text-dim);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+.np-panel__fold:hover {
+  color: var(--orca-text);
+}
+.np-panel__art {
+  border: none;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+  width: 100%;
+}
+.np-panel__art img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 10px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.6);
+}
+.np-panel__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.np-panel__title {
+  font-weight: 700;
+  color: var(--orca-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.np-panel__artist {
+  font-size: 13px;
+  color: var(--orca-text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.np-panel__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.np-panel__credits {
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.np-panel__credits-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--orca-text-dim);
+}
+.np-panel__credits-line {
+  margin: 0;
+  font-size: 13px;
+  color: var(--orca-text-dim);
+  overflow-wrap: anywhere;
+}
+.np-panel__credits-line strong {
+  color: var(--orca-text);
+  font-weight: 600;
+}
+.np-panel__link {
+  align-self: flex-start;
+  margin-top: 4px;
+  font-size: 12px;
+}
+.np-panel--closed .np-panel__info,
+.np-panel--closed .np-panel__actions,
+.np-panel--closed .np-panel__credits,
+.np-panel--closed .np-panel__art {
+  display: none;
+}
+
+/* ---------- Media card three-dot ---------- */
+.card__more {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.62);
+  color: var(--orca-text);
+  opacity: 0;
+  transition: opacity 120ms ease;
+  cursor: pointer;
+}
+.card:hover .card__more,
+.card:focus-within .card__more {
+  opacity: 1;
+}
+.card__more:hover {
+  background: rgba(0, 0, 0, 0.85);
+}

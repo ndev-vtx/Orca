@@ -9,6 +9,7 @@ import type {
   PlaylistSummary,
   SearchFilter,
   SongDto,
+  TrackDetail,
   UserDto,
 } from "../types";
 
@@ -109,6 +110,9 @@ export const api = {
 
   history: (limit = 50) =>
     request<{ history: SongDto[] }>(`/api/library/history?limit=${limit}`),
+
+  track: (videoId: string) =>
+    request<TrackDetail>(`/api/track/${encodeURIComponent(videoId)}`),
 
   playlists: () => request<PlaylistSummary[]>("/api/library/playlists"),
 

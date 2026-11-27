@@ -103,3 +103,21 @@ export interface AuthProviders {
   google: boolean;
   clientId: string;
 }
+
+export interface TrackCredits {
+  channel: string;
+  source: string;
+}
+
+export interface TrackDetail {
+  videoId: string;
+  title: string;
+  artist: string;
+  duration: string;
+  artworkUrl: string;
+  album: string;
+  albumId: string;
+  year: string;
+  credits: TrackCredits;
+  song: SongDto | null;
+}

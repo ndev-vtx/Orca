@@ -12,7 +12,11 @@ import AlbumPage from "./pages/AlbumPage";
 import QueuePage from "./pages/QueuePage";
 import SettingsPage from "./pages/SettingsPage";
 import NotFoundPage from "./pages/NotFoundPage";
+import TrackPage from "./pages/TrackPage";
 import AuthModal from "./components/AuthModal";
+import TrackMenu from "./components/TrackMenu";
+import PlaylistPickerModal from "./components/PlaylistPickerModal";
+import NowPlayingPanel from "./components/NowPlayingPanel";
 import { usePlayerStore } from "./state/player";
 import { useLibraryStore } from "./state/libraryStore";
 import { useAuthStore } from "./state/authStore";
@@ -28,6 +32,7 @@ import "./styles/pages.css";
 import "./styles/lyrics.css";
 import "./styles/mobile.css";
 import "./styles/miniplayer.css";
+import "./styles/track.css";
 
 export default function App() {
   const loadLibrary = useLibraryStore((s) => s.loadLibrary);
@@ -56,16 +61,20 @@ export default function App() {
               <Route path="/library" element={<LibraryPage />} />
               <Route path="/playlist/:id" element={<PlaylistPage />} />
               <Route path="/album/:browseId" element={<AlbumPage />} />
+              <Route path="/track/:videoId" element={<TrackPage />} />
               <Route path="/queue" element={<QueuePage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="*" element={<NotFoundPage />} />
             </Routes>
           </main>
+          {!isMobile && <NowPlayingPanel />}
         </div>
         <NowPlayingBar />
         <LyricsPanel />
         {isMobile && <MobileNav />}
         <AuthModal />
+        <TrackMenu />
+        <PlaylistPickerModal />
       </div>
     </BrowserRouter>
   );

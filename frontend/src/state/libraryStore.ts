@@ -24,6 +24,8 @@ interface LibraryState {
   toggleSaved: (song: SongDto) => Promise<void>;
   createPlaylist: (name: string) => Promise<PlaylistSummary>;
   deletePlaylist: (id: number) => Promise<void>;
+  removeFromPlaylist: (id: number, videoId: string) => Promise<void>;
+  addTracksToPlaylist: (id: number, songs: SongDto[]) => Promise<void>;
 }
 
 function loadFilter(): LibraryFilter {
@@ -132,6 +134,16 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   deletePlaylist: async (id) => {
     await api.deletePlaylist(id);
+    await get().refreshPlaylists();
+  },
+
+  removeFromPlaylist: async (id, videoId) => {
+    await api.removeFromPlaylist(id, videoId);
+    await get().refreshPlaylists();
+  },
+
+  addTracksToPlaylist: async (id, songs) => {
+    await api.addToPlaylist(id, songs);
     await get().refreshPlaylists();
   },
 }));

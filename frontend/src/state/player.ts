@@ -92,6 +92,9 @@ interface PlaybackState {
   play(songs: SongDto[], startIndex?: number, context?: string): void;
   playSong(song: SongDto, context?: string): void;
   playAt(index: number): void;
+  addToQueue(song: SongDto): void;
+  removeFromQueue(index: number): void;
+  clearQueue(): void;
   retryCurrent(): void;
   toggle(): void;
   next(force?: boolean): void;
@@ -444,6 +447,33 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
       set({ cursor: index, context: get().context || "queue" });
       startLoad(song, 0);
       if (index + 1 >= queue.length) expandRadio(song);
+    },
+
+    addToQueue: (song) => {
+      if (!song || !song.videoId) return;
+      const { queue } = get();
+      if (queue.some((t) => t.videoId === song.videoId)) {
+        announce("Already in the queue");
+        return;
+      }
+      if (queue.length >= MAX_QUEUE_SIZE) {
+        announce("Queue is full");
+        return;
+      }
+      set({ queue: [...queue, song] });
+      announce(`Added to queue — ${song.title}`);
+    },
+
+    removeFromQueue: (index) => {
+      const { queue, cursor } = get();
+      if (index <= cursor || index >= queue.length) return; // played + current stay
+      set({ queue: queue.filter((_, i) => i !== index) });
+    },
+
+    clearQueue: () => {
+      const { queue, cursor } = get();
+      // Keep the playing track; drop everything queued after it.
+      set({ queue: queue.slice(0, cursor + 1) });
     },
 
     retryCurrent: () => {
