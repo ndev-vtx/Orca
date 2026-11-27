@@ -41,8 +41,8 @@ export async function openPipWindow(onClosed: () => void): Promise<Window | null
   let win: Window;
   try {
     win = await W.documentPictureInPicture!.requestWindow({
-      width: 420,
-      height: 180,
+      width: 460,
+      height: 200,
     });
   } catch {
     return null;

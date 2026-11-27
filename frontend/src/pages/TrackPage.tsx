@@ -298,18 +298,24 @@ export function TrackRow({
   index: number;
   onPlay: () => void;
 }) {
+  const navigate = useNavigate();
   const currentId = usePlayerStore((s) => s.current?.videoId ?? null);
   const playing = usePlayerStore((s) => s.playing);
   const openMenu = useUiStore((s) => s.openMenu);
   const active = currentId === track.videoId;
+  // Clicking a track opens that track's page AND starts its playback.
+  const open = () => {
+    navigate(`/track/${encodeURIComponent(track.videoId)}`);
+    onPlay();
+  };
   return (
     <div
       className={`tracktable__row${active ? " tracktable__row--active" : ""}`}
       role="button"
       tabIndex={0}
-      onClick={onPlay}
+      onClick={open}
       onKeyDown={(e) => {
-        if (e.key === "Enter") onPlay();
+        if (e.key === "Enter") open();
       }}
     >
       <span className="tracktable__num">

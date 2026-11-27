@@ -159,9 +159,12 @@ export default function HomePage() {
             <div className="page__quickgrid">
               {heroTracks.map((t, i) => (
                 <button
-                  key={t.videoId}
+                  key={`${t.videoId}-${i}`}
                   className="quickcard"
-                  onClick={() => play(heroTracks, i, "home")}
+                  onClick={() => {
+                    navigate(`/track/${encodeURIComponent(t.videoId)}`);
+                    play(heroTracks, i, "home");
+                  }}
                   title={`Play ${t.title} — ${t.artist}`}
                 >
                   {t.artworkUrl ? (

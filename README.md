@@ -148,6 +148,24 @@ Check `https://<your-app>.vercel.app/api/doctor` afterwards:
 clients per profile). Cookie sessions automatically fetch the watch page
 (only pageless extraction skips it).
 
+## Google Sign-In setup
+
+Google Sign-In activates automatically when `ORCA_GOOGLE_CLIENT_ID` is set as
+an environment variable (Vercel: Project → Settings → Environment Variables).
+
+To prevent `Error 400: origin_mismatch`, the OAuth client in
+[Google Cloud Console → APIs & Services → Credentials](https://console.cloud.google.com/apis/credentials)
+must list **every origin the app is opened from** under
+**Authorized JavaScript origins**, e.g.:
+
+- `https://orca-d.vercel.app` (production)
+- `https://<preview-project>.vercel.app` (preview deployments, if used)
+- `http://localhost:5173` and `http://localhost:8765` (local development)
+
+After adding origins, save, then hard-reload the app (GIS caches client
+config per origin). The auth modal already detects `origin_mismatch` and
+shows the exact origin to whitelist.
+
 ### How playback works on hosted deployments
 
 Primary playback is the **official YouTube IFrame Player API**, run inside

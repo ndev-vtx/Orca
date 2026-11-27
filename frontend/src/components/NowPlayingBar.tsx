@@ -37,6 +37,11 @@ export default function NowPlayingBar() {
   const dragging = useRef<SliderKind | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const volumeRef = useRef<HTMLDivElement | null>(null);
+  // While the user is scrubbing, the bar shows the dragged timestamp instead
+  // of the (stale) engine position, so the handle never snaps back to 0:00
+  // mid-drag. The exact timestamp is committed on release.
+  const [dragSeek, setDragSeek] = useState<number | null>(null);
+  const lastSeekSent = useRef(0);
 
   const current = usePlayerStore((s) => s.current);
   const playing = usePlayerStore((s) => s.playing);
@@ -75,35 +80,64 @@ export default function NowPlayingBar() {
   const openPicker = useUiStore((s) => s.openPicker);
 
   const duration = durationMs > 0 ? durationMs : 0;
-  const seekPercent = duration > 0 ? Math.min(100, (positionMs / duration) * 100) : 0;
+  const shownPosition = dragSeek ?? positionMs;
+  const seekPercent = duration > 0 ? Math.min(100, (shownPosition / duration) * 100) : 0;
   const volumeShown = muted ? 0 : volume;
 
   const setPercent = (kind: SliderKind, percent: number) => {
-    if (kind === "seek") {
-      if (duration > 0) seek(Math.round((percent / 100) * duration));
-    } else {
+    if (kind === "volume") {
       setVolume(percent);
       if (percent > 0 && muted) setMuted(false);
     }
+  };
+
+  const seekMsFromEvent = (el: HTMLElement, e: React.PointerEvent): number | null => {
+    if (duration <= 0) return null;
+    const percent = percentFromEvent(el, e);
+    return Math.round((percent / 100) * duration);
   };
 
   const onPointerDown = (kind: SliderKind, ref: React.RefObject<HTMLElement | null>) => (
     e: React.PointerEvent,
   ) => {
     if (!ref.current) return;
-    if (kind === "seek" && duration === 0) return;
-    dragging.current = kind;
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    dragging.current = kind;
+    if (kind === "seek") {
+      const ms = seekMsFromEvent(ref.current, e);
+      if (ms === null) {
+        dragging.current = null;
+        return;
+      }
+      setDragSeek(ms);
+      seek(ms);
+      return;
+    }
     setPercent(kind, percentFromEvent(ref.current, e));
   };
 
   const onPointerMove = (ref: React.RefObject<HTMLElement | null>) => (e: React.PointerEvent) => {
     if (!dragging.current || !ref.current) return;
-    setPercent(dragging.current, percentFromEvent(ref.current, e));
+    if (dragging.current === "volume") {
+      setPercent("volume", percentFromEvent(ref.current, e));
+      return;
+    }
+    const ms = seekMsFromEvent(ref.current, e);
+    if (ms === null) return;
+    setDragSeek(ms);
+    // Throttle live scrubbing; dragging then releasing lands exactly on the
+    // released timestamp (committed in onPointerUp).
+    const now = Date.now();
+    if (now - lastSeekSent.current > 140) {
+      lastSeekSent.current = now;
+      seek(ms);
+    }
   };
 
   const onPointerUp = () => {
+    if (dragging.current === "seek" && dragSeek !== null) seek(dragSeek);
     dragging.current = null;
+    setDragSeek(null);
   };
 
   const onToggleMute = () => {
@@ -244,7 +278,7 @@ export default function NowPlayingBar() {
           </button>
         </div>
         <div className="bar__seek">
-          <span className="bar__time">{formatTime(positionMs)}</span>
+          <span className="bar__time">{formatTime(shownPosition)}</span>
           <div
             ref={trackRef}
             className={`bar__track${dragging.current === "seek" ? " bar__track--drag" : ""}`}
@@ -253,11 +287,11 @@ export default function NowPlayingBar() {
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={Math.round(seekPercent)}
-            aria-valuetext={`${formatTime(positionMs)} of ${formatTime(duration)}`}
+            aria-valuetext={`${formatTime(shownPosition)} of ${formatTime(duration)}`}
             tabIndex={0}
             onKeyDown={(e) => {
-              if (e.key === "ArrowRight") seek(positionMs + 5000);
-              if (e.key === "ArrowLeft") seek(positionMs - 5000);
+              if (e.key === "ArrowRight") seek(shownPosition + 5000);
+              if (e.key === "ArrowLeft") seek(Math.max(0, shownPosition - 5000));
             }}
             onPointerDown={onPointerDown("seek", trackRef)}
             onPointerMove={onPointerMove(trackRef)}

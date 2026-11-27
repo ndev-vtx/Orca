@@ -1,6 +1,8 @@
 .orca-app {
   height: 100vh;
-  padding: var(--orca-gap) var(--orca-gap) 0 var(--orca-gap);
+  /* Bottom padding reserves room for the fixed player bar + home indicator. */
+  padding: var(--orca-gap) var(--orca-gap)
+    calc(var(--orca-bar-h) + env(safe-area-inset-bottom, 0px)) var(--orca-gap);
   display: flex;
   flex-direction: column;
   background: var(--orca-black);

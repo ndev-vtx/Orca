@@ -102,30 +102,6 @@
   text-overflow: ellipsis;
 }
 
-.miniplayer__like {
-  flex: 0 0 auto;
-  width: 34px;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  color: #b3b3b3;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  transition: color 0.15s ease, background 0.15s ease;
-}
-
-.miniplayer__like:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.miniplayer__like--on {
-  color: #4d6bfe;
-}
-
 .miniplayer__close {
   flex: 0 0 auto;
   width: 28px;
@@ -145,6 +121,45 @@
 .miniplayer__close:hover {
   color: #ffffff;
   background: rgba(255, 255, 255, 0.08);
+}
+
+.miniplayer__ctrl--on {
+  color: #4d6bfe;
+}
+
+.miniplayer__ctrl--extra {
+  width: 32px;
+  height: 32px;
+}
+
+/* Progress bar is scrubbed like the main player bar. */
+.miniplayer__progress {
+  cursor: pointer;
+  touch-action: none;
+}
+
+.miniplayer__progress--drag .miniplayer__progress-fill {
+  transition: none;
+}
+
+.miniplayer__volume {
+  flex: 0 0 64px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.14);
+  position: relative;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.miniplayer__volume-fill {
+  height: 100%;
+  background: #b3b3b3;
+  border-radius: 2px;
+}
+
+.miniplayer__volume:hover .miniplayer__volume-fill {
+  background: #ffffff;
 }
 
 .miniplayer__progress {
@@ -249,6 +264,11 @@
     padding: 12px;
   }
 
+  .miniplayer__ctrl--extra,
+  .miniplayer__volume {
+    display: none;
+  }
+
   .miniplayer__art {
     flex: 0 0 56px;
     width: 56px;
@@ -265,11 +285,6 @@
 
   .miniplayer__artist {
     font-size: 11px;
-  }
-
-  .miniplayer__like {
-    width: 30px;
-    height: 30px;
   }
 
   .miniplayer__close {

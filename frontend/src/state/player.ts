@@ -532,6 +532,13 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
       const { queue } = get();
       if (!Number.isInteger(index) || index < 0 || index >= queue.length) return;
       const song = queue[index];
+      // Re-selecting the track that is already loaded must never restart it
+      // (that would snap the position back to 0:00) — just resume if paused.
+      if (loadedId === song.videoId && get().current?.videoId === song.videoId) {
+        set({ cursor: index });
+        if (!audioEngine.isPlaying()) audioEngine.playCurrent();
+        return;
+      }
       radioSeed = null;
       advanceAfterRadio = false;
       set({ cursor: index, context: get().context || "queue" });

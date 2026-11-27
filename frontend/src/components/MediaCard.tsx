@@ -56,6 +56,7 @@ export default function MediaCard({
       navigate(`/album/${encodeURIComponent(song.videoId)}`);
       return;
     }
+    navigate(`/track/${encodeURIComponent(song.videoId)}`);
     start();
   };
 

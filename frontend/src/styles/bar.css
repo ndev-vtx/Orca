@@ -1,12 +1,24 @@
+/*
+ * The player bar is pinned to the very bottom of the viewport at all times
+ * (fixed, full-bleed) so page scrolling can never push or float it. The app
+ * shell reserves its height via padding-bottom on .orca-app.
+ */
 .bar {
-  height: var(--orca-bar-h);
-  flex: 0 0 auto;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  height: calc(var(--orca-bar-h) + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   display: grid;
   grid-template-columns: minmax(180px, 1fr) minmax(320px, 2fr) minmax(180px, 1fr);
   align-items: center;
   gap: 12px;
-  padding: 0 12px 0 0;
+  padding-left: max(6px, env(safe-area-inset-left, 0px));
+  padding-right: 12px;
   background: var(--orca-black);
+  border-top: 1px solid var(--orca-border);
 }
 
 .bar__left {
@@ -190,10 +202,6 @@
 }
 
 /* --- live playback ------------------------------------------------------ */
-.bar {
-  position: relative;
-}
-
 .bar__cover {
   width: 52px;
   height: 52px;

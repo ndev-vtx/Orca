@@ -346,9 +346,15 @@ export default function PlaylistPage() {
                     className={`tracktable__row${active ? " tracktable__row--active" : ""}`}
                     role="button"
                     tabIndex={0}
-                    onClick={() => playRow(i)}
+                    onClick={() => {
+                      navigate(`/track/${encodeURIComponent(t.videoId)}`);
+                      playRow(i);
+                    }}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") playRow(i);
+                      if (e.key === "Enter") {
+                        navigate(`/track/${encodeURIComponent(t.videoId)}`);
+                        playRow(i);
+                      }
                     }}
                   >
                     <span className="tracktable__num">
