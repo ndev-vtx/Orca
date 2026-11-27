@@ -333,7 +333,8 @@ class CatalogSource:
             "albumId": album_id,
             "year": year,
             "credits": {"channel": channel, "source": "YouTube Music"},
-            "song": song.to_dict() if song is not None else None,
+            # Raw Song object — the server layer converts it to a DTO.
+            "song": song,
         }
 
     def similar(self, seed_id: str, limit: int = 26) -> List[Song]:
