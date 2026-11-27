@@ -14,14 +14,15 @@ interface MediaCardProps {
 }
 
 /*
- * Album results arrive as type "album" or as "playlist" with an MPREb browse
- * id (the catalog's category remap renames them); either way the id is a
- * browse target, not a playable video, so the card opens the album page.
+ * Album AND playlist results arrive with a browse id (MPRE… albums, VL…
+ * playlists) in the videoId field — the id is a browse target, not a playable
+ * video, so the card opens the album/playlist page instead of trying to play.
  */
 export function isAlbumEntry(song: SongDto): boolean {
   const kind = (song.type ?? "").toLowerCase();
   if (kind === "album" || kind === "albums") return true;
-  return kind === "playlist" && song.videoId.startsWith("MPRE");
+  if (kind === "playlist") return song.videoId.startsWith("MPRE") || song.videoId.startsWith("VL");
+  return false;
 }
 
 export default function MediaCard({

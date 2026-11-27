@@ -43,8 +43,8 @@ export default function PlaylistPickerModal() {
     setBusy(true);
     setError("");
     try {
-      await addTracksToPlaylist(id, [song]);
-      notify(`Added to ${name}`);
+      const added = await addTracksToPlaylist(id, [song]);
+      notify(added > 0 ? `Added to ${name}` : `Already in ${name}`);
       setBusy(false);
       closePicker();
     } catch (err) {

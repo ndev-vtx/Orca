@@ -17,6 +17,7 @@ export default function PlaylistPage() {
   const [error, setError] = useState("");
   const savedIds = useLibraryStore((s) => s.savedIds);
   const deletePlaylist = useLibraryStore((s) => s.deletePlaylist);
+  const playlistVersion = useLibraryStore((s) => s.playlistVersion);
   const openMenu = useUiStore((s) => s.openMenu);
   const play = usePlayerStore((s) => s.play);
   const currentId = usePlayerStore((s) => s.current?.videoId ?? null);
@@ -46,7 +47,7 @@ export default function PlaylistPage() {
     return () => {
       live = false;
     };
-  }, [playlistId]);
+  }, [playlistId, playlistVersion]);
 
   const savedCount = detail ? detail.tracks.filter((t) => savedIds.has(t.videoId)).length : 0;
 
@@ -118,7 +119,7 @@ export default function PlaylistPage() {
                     title="More options"
                     onClick={(e) => {
                       e.stopPropagation();
-                      openMenu(t, { x: e.clientX, y: e.clientY }, playlistId);
+                      openMenu(t, { x: e.clientX, y: e.clientY }, { playlistId });
                     }}
                   >
                     <MoreIcon size={15} />

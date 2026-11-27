@@ -17,13 +17,11 @@ export default function TrackMenu() {
   const navigate = useNavigate();
   const toggleSaved = useLibraryStore((s) => s.toggleSaved);
   const savedIds = useLibraryStore((s) => s.savedIds);
-  const refreshPlaylists = useLibraryStore((s) => s.refreshPlaylists);
   const playSong = usePlayerStore((s) => s.playSong);
   const addToQueue = usePlayerStore((s) => s.addToQueue);
   const removeFromPlaylistApi = useLibraryStore((s) => s.removeFromPlaylist);
   const notify = usePlayerStore((s) => s.notify);
   const ref = useRef<HTMLDivElement | null>(null);
-  void refreshPlaylists; // refreshed inside the store actions
 
   useEffect(() => {
     if (!menu) return;
@@ -42,11 +40,14 @@ export default function TrackMenu() {
   }, [menu, closeMenu]);
 
   if (!menu) return null;
-  const { song, anchor, playlistId } = menu;
+  const { song, anchor } = menu;
+  const { playlistId, albumId } = menu.options ?? {};
   const saved = savedIds.has(song.videoId);
 
-  const clamp = (value: number, size: number) =>
-    Math.min(value, window.innerWidth - size - 8);
+  const clampLeft = (value: number, size: number) =>
+    Math.min(Math.max(8, value), window.innerWidth - size - 8);
+  const clampTop = (value: number, height: number) =>
+    Math.min(Math.max(8, value), Math.max(8, window.innerHeight - height - 8));
 
   const act = (fn: () => void) => () => {
     closeMenu();
@@ -54,7 +55,7 @@ export default function TrackMenu() {
   };
 
   const share = async () => {
-    const url = `https://music.youtube.com/watch?v=${encodeURIComponent(song.videoId)}`;
+    const url = `${window.location.origin}/track/${encodeURIComponent(song.videoId)}`;
     try {
       if (navigator.share) {
         await navigator.share({ title: `${song.title} · ${song.artist}`, url });
@@ -85,6 +86,9 @@ export default function TrackMenu() {
       },
     },
     { label: "Go to artist", hint: song.artist || undefined, run: act(() => goSearch(song.artist || song.title)) },
+    ...(albumId
+      ? [{ label: "Go to album", run: act(() => navigate(`/album/${encodeURIComponent(albumId)}`)) }]
+      : []),
     { label: "View credits", run: act(openTrack) },
     { label: "Share", run: () => void share() },
   ];
@@ -94,18 +98,25 @@ export default function TrackMenu() {
       label: "Remove from this playlist",
       danger: true,
       run: () =>
-        void removeFromPlaylistApi(playlistId, song.videoId).then(() =>
-          notify("Removed from playlist"),
-        ),
+        void removeFromPlaylistApi(playlistId, song.videoId)
+          .then(() => notify("Removed from playlist"))
+          .catch(() => notify("Could not remove the track")),
     });
   }
+
+  // Estimate the rendered height so a menu opened near the bottom edge stays
+  // inside the viewport instead of clipping off-screen.
+  const estimatedHeight = 60 + items.length * 38;
 
   return createPortal(
     <div
       className="ctxmenu"
       ref={ref}
       role="menu"
-      style={{ left: clamp(anchor.x, 230), top: anchor.y }}
+      style={{
+        left: clampLeft(anchor.x, 236),
+        top: clampTop(anchor.y, estimatedHeight),
+      }}
       onClick={(e) => e.stopPropagation()}
     >
       <p className="ctxmenu__title" title={song.title}>

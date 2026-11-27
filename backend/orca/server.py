@@ -823,11 +823,11 @@ def create_app() -> FastAPI:
         ]
         if not songs:
             raise HTTPException(status_code=400, detail="no valid tracks in payload")
-        storage.add_tracks_to_playlist(playlist_id, songs)
+        added = storage.add_tracks_to_playlist(playlist_id, songs)
         manager.broadcast_threadsafe(
             {"type": "playlist_tracks_changed", "payload": {"id": playlist_id}}
         )
-        return BroadcastResponse(ok=True)
+        return BroadcastResponse(ok=True, added=added)
 
     @app.delete(
         "/api/library/playlists/{playlist_id}/tracks/{video_id}", response_model=BroadcastResponse

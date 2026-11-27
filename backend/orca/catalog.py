@@ -234,6 +234,7 @@ class CatalogSource:
         def _do_album() -> Dict[str, Any]:
             return self.api.get_album(browse_id)
 
+        data: Any = None
         try:
             data = _with_retry(
                 _do_album,
@@ -243,7 +244,48 @@ class CatalogSource:
             )
         except Exception as exc:
             log.warning("album lookup failed for %s: %s", browse_id, exc)
-            return {}
+        if not isinstance(data, dict) or not data.get("tracks"):
+            """
+            Playlist browse ids (VL…) are not albums — get_album rejects them.
+            Metadata comes from get_playlist, but its track rows frequently
+            carry videoId: null (unavailable entries on this client), so the
+            playable rows are pulled from the watch-playlist endpoint (which
+            wants the id without the VL prefix) and used as the tracklist.
+            """
+            pdata: Any = None
+            try:
+                pdata = _with_retry(
+                    lambda: self.api.get_playlist(browse_id),
+                    max_attempts=2,
+                    base_delay=0.6,
+                    operation_name=f"playlist-browse({browse_id})",
+                )
+            except Exception as exc:
+                log.warning("playlist-browse failed for %s: %s", browse_id, exc)
+
+            base_id = browse_id[2:] if browse_id.startswith("VL") else browse_id
+            wdata: Any = None
+            try:
+                wdata = _with_retry(
+                    lambda: self.api.get_watch_playlist(playlistId=base_id, limit=50),
+                    max_attempts=2,
+                    base_delay=0.6,
+                    operation_name=f"playlist-watch({base_id})",
+                )
+            except Exception as exc:
+                log.warning("playlist-watch failed for %s: %s", base_id, exc)
+
+            watch_tracks = wdata.get("tracks") or [] if isinstance(wdata, dict) else []
+            playable = [t for t in watch_tracks if isinstance(t, dict) and t.get("videoId")]
+            if isinstance(pdata, dict) and (playable or pdata.get("tracks")):
+                author = pdata.get("author")
+                if isinstance(author, dict):
+                    pdata["artists"] = [{"name": author.get("name") or ""}]
+                elif isinstance(author, str) and author:
+                    pdata["artists"] = [{"name": author}]
+                if playable:
+                    pdata["tracks"] = playable
+                data = pdata
         if not isinstance(data, dict):
             return {}
 

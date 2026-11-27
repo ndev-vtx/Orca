@@ -128,7 +128,7 @@ export const api = {
     del<Record<string, never>>(`/api/library/playlists/${id}`),
 
   addToPlaylist: (id: number, songs: SongDto[]) =>
-    post<Record<string, never>>(`/api/library/playlists/${id}/tracks`, { songs }),
+    post<{ ok: boolean; added?: number }>(`/api/library/playlists/${id}/tracks`, { songs }),
 
   removeFromPlaylist: (id: number, videoId: string) =>
     del<Record<string, never>>(

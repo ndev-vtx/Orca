@@ -413,10 +413,10 @@ class OrcaStorage:
                 for r in rows
             ]
 
-    def add_tracks_to_playlist(self, playlist_id: int, songs: List[Song]) -> None:
+    def add_tracks_to_playlist(self, playlist_id: int, songs: List[Song]) -> int:
         """Append songs to a playlist preserving order and skipping duplicates."""
         if not songs:
-            return
+            return 0
         with self._connection() as conn:
             max_pos_row = conn.execute(
                 "SELECT COALESCE(MAX(position), -1) as max_pos FROM playlist_tracks WHERE playlist_id = ?;",
@@ -460,6 +460,9 @@ class OrcaStorage:
                     records,
                 )
                 conn.commit()
+        # Report how many actually landed — duplicates were skipped above so
+        # the UI can tell "added" from "already in the playlist".
+        return len(records)
 
     def remove_track_from_playlist(self, playlist_id: int, video_id: str) -> None:
         """Remove a track from a playlist and re-compact track positions."""

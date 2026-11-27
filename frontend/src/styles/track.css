@@ -439,3 +439,12 @@
 .card__more:hover {
   background: rgba(0, 0, 0, 0.85);
 }
+
+/* Touch devices have no hover: reveal the three-dot buttons unconditionally. */
+@media (hover: none) {
+  .tracktable__more,
+  .card__more,
+  .card__heart {
+    opacity: 1;
+  }
+}

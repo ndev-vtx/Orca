@@ -87,6 +87,9 @@ function readBillboardPref(): BillboardPref {
 export default function SettingsPage() {
   const [pref, setPref] = useState<BillboardPref>(readBillboardPref);
   const [version, setVersion] = useState("");
+  // Tracked in state so the active ring moves the instant a swatch is clicked
+  // (applyPalette only touches CSS variables, which doesn't re-render).
+  const [accent, setAccent] = useState(() => currentAccent());
   const loadLibrary = useLibraryStore((s) => s.loadLibrary);
   const notify = usePlayerStore((s) => s.notify);
   const user = useAuthStore((s) => s.user);
@@ -174,7 +177,7 @@ export default function SettingsPage() {
           </p>
           <div className="settings__palette">
             {PALETTES.map((p) => {
-              const active = currentAccent() === p.accent.toLowerCase();
+              const active = accent === p.accent.toLowerCase();
               return (
                 <button
                   key={p.accent}
@@ -185,6 +188,7 @@ export default function SettingsPage() {
                     savePref("orca.accent", p.accent);
                     savePref("orca.accentHover", p.hover);
                     applyPalette(p.accent, p.hover);
+                    setAccent(p.accent.toLowerCase());
                   }}
                 >
                   <span
@@ -198,13 +202,14 @@ export default function SettingsPage() {
               );
             })}
           </div>
-          {currentAccent() !== DEFAULT_ACCENT && (
+          {accent !== DEFAULT_ACCENT && (
             <button
               className="settings__ghostbtn settings__reset-accent"
               onClick={() => {
                 savePref("orca.accent", DEFAULT_ACCENT);
                 savePref("orca.accentHover", DEFAULT_ACCENT_HOVER);
                 applyPalette(DEFAULT_ACCENT, DEFAULT_ACCENT_HOVER);
+                setAccent(DEFAULT_ACCENT);
               }}
             >
               Reset to Dolphin Blue

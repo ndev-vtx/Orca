@@ -55,6 +55,9 @@ class NowPlayingRequest(BaseModel):
 
 class BroadcastResponse(BaseModel):
     ok: bool = True
+    # For playlist track adds: how many tracks actually landed (duplicates
+    # are skipped server-side so the UI can say "already in the playlist").
+    added: int = 0
 
 
 class PlaylistSummary(BaseModel):

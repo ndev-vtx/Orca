@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../services/api";
-import type { SongDto, TrackDetail } from "../types";
+import type { LyricLine, SongDto, TrackDetail } from "../types";
 import TopBar from "../components/TopBar";
 import { MusicTile } from "../components/Shared";
 import {
@@ -14,6 +14,12 @@ import {
 import { usePlayerStore } from "../state/player";
 import { useLibraryStore } from "../state/libraryStore";
 import { useUiStore } from "../state/uiStore";
+
+/** Session-scoped lyric cache so revisiting a track doesn't re-fetch. */
+const lyricsCache = new Map<
+  string,
+  { lines: LyricLine[]; plain: string | null; status: "ready" | "empty" | "error" }
+>();
 
 /**
  * Rich track detail view: large cover, "Bài hát" badge, metadata, play /
@@ -35,10 +41,6 @@ export default function TrackPage() {
   const notify = usePlayerStore((s) => s.notify);
   const lyricsOpen = usePlayerStore((s) => s.lyricsOpen);
   const toggleLyrics = usePlayerStore((s) => s.toggleLyrics);
-  const lyrics = usePlayerStore((s) => s.lyrics);
-  const lyricsStatus = usePlayerStore((s) => s.lyricsStatus);
-  const lyricsPlain = usePlayerStore((s) => s.lyricsPlain);
-  const ensureLyrics = usePlayerStore((s) => s.ensureLyrics);
   const seek = usePlayerStore((s) => s.seek);
 
   const savedIds = useLibraryStore((s) => s.savedIds);
@@ -47,6 +49,11 @@ export default function TrackPage() {
   const openPicker = useUiStore((s) => s.openPicker);
 
   const [similar, setSimilar] = useState<SongDto[]>([]);
+  // Lyrics for THIS page's track — decoupled from the playing track that the
+  // global lyrics panel follows, so browsing any /track/:id shows its own words.
+  const [lyrics, setLyrics] = useState<LyricLine[]>([]);
+  const [lyricsPlain, setLyricsPlain] = useState<string | null>(null);
+  const [lyricsStatus, setLyricsStatus] = useState<"idle" | "loading" | "ready" | "empty" | "error">("idle");
   const lineRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const lyricsBodyRef = useRef<HTMLDivElement | null>(null);
 
@@ -85,10 +92,40 @@ export default function TrackPage() {
   }, [videoId]);
 
   // Lyrics follow the page's own track, not necessarily the playing one.
-  const lyricsFor = song?.videoId ?? "";
+  // Results are cached per videoId for the session.
   useEffect(() => {
-    if (lyricsOpen && lyricsFor) void ensureLyrics();
-  }, [lyricsOpen, lyricsFor, ensureLyrics]);
+    const target = song?.videoId;
+    if (!target) return;
+    const cached = lyricsCache.get(target);
+    if (cached) {
+      setLyrics(cached.lines);
+      setLyricsPlain(cached.plain);
+      setLyricsStatus(cached.status);
+      return;
+    }
+    let live = true;
+    setLyrics([]);
+    setLyricsPlain(null);
+    setLyricsStatus("loading");
+    api
+      .lyrics(song)
+      .then((res) => {
+        if (!live) return;
+        const lines = res.parsed ?? [];
+        const plain = res.plain ?? res.synced ?? null;
+        const status = lines.length > 0 || plain ? ("ready" as const) : ("empty" as const);
+        lyricsCache.set(target, { lines, plain, status });
+        setLyrics(lines);
+        setLyricsPlain(plain);
+        setLyricsStatus(status);
+      })
+      .catch(() => {
+        if (live) setLyricsStatus("error");
+      });
+    return () => {
+      live = false;
+    };
+  }, [song]);
 
   const activeIdx = useMemo(() => {
     if (!isCurrent || lyrics.length === 0) return -1;
@@ -101,12 +138,12 @@ export default function TrackPage() {
   }, [isCurrent, lyrics, positionMs]);
 
   useEffect(() => {
-    if (activeIdx < 0 || !lyricsOpen) return;
+    if (activeIdx < 0) return;
     const line = lineRefs.current[activeIdx];
     const body = lyricsBodyRef.current;
     if (!line || !body) return;
     body.scrollTo({ top: line.offsetTop - body.clientHeight / 2 + line.clientHeight / 2 });
-  }, [activeIdx, lyricsOpen]);
+  }, [activeIdx]);
 
   const playSong = () => {
     if (!song) return;
@@ -120,7 +157,7 @@ export default function TrackPage() {
   const menuAnchor = (e: React.MouseEvent) => {
     if (!song) return;
     e.stopPropagation();
-    openMenu(song, { x: e.clientX, y: e.clientY });
+    openMenu(song, { x: e.clientX, y: e.clientY }, detail?.albumId ? { albumId: detail.albumId } : undefined);
   };
 
   const meta: string[] = [];

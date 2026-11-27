@@ -10,6 +10,8 @@ interface LibraryState {
   backendError: string;
   playlists: PlaylistSummary[];
   playlistSummaries: PlaylistSummary[];
+  /** Bumped whenever any playlist's contents change, so open playlist pages re-fetch. */
+  playlistVersion: number;
   savedTracks: SongDto[];
   savedIds: Set<string>;
   libraryFilter: LibraryFilter;
@@ -25,7 +27,8 @@ interface LibraryState {
   createPlaylist: (name: string) => Promise<PlaylistSummary>;
   deletePlaylist: (id: number) => Promise<void>;
   removeFromPlaylist: (id: number, videoId: string) => Promise<void>;
-  addTracksToPlaylist: (id: number, songs: SongDto[]) => Promise<void>;
+  /** Resolves with the number of tracks that actually landed (duplicates skipped). */
+  addTracksToPlaylist: (id: number, songs: SongDto[]) => Promise<number>;
 }
 
 function loadFilter(): LibraryFilter {
@@ -42,6 +45,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   backendError: "",
   playlists: [],
   playlistSummaries: [],
+  playlistVersion: 0,
   savedTracks: [],
   savedIds: new Set(),
   libraryFilter: loadFilter(),
@@ -140,11 +144,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   removeFromPlaylist: async (id, videoId) => {
     await api.removeFromPlaylist(id, videoId);
     await get().refreshPlaylists();
+    set({ playlistVersion: get().playlistVersion + 1 });
   },
 
   addTracksToPlaylist: async (id, songs) => {
-    await api.addToPlaylist(id, songs);
+    const res = await api.addToPlaylist(id, songs);
     await get().refreshPlaylists();
+    set({ playlistVersion: get().playlistVersion + 1 });
+    return res?.added ?? 0;
   },
 }));
 
