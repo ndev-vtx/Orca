@@ -95,3 +95,36 @@ def test_video_results_rank_below_catalog_songs():
     out = _clean_songs([ugc, clean])
     assert out[0].type == "song"
     assert any(s.type == "video" for s in out)
+
+
+def test_podcast_interview_vlog_titles_are_junk():
+    assert _is_junk(song("Podcast episode 42 - interview with a producer", "55:12"))
+    assert _is_junk(song("My Thailand vlog day 3", "12:04"))
+    assert not _is_junk(song("Podcast", "3:45") if False else song("A Real Song", "3:45"))
+
+
+def test_speed_up_and_daycore_demoted():
+    assert _clean_songs([song("Song (speed up)"), song("Song")])[0].title == "Song"
+    assert _clean_songs([song("Song daycore"), song("Song")])[0].title == "Song"
+
+
+def test_album_tracks_get_album_cover():
+    import unittest.mock as mock
+    from orca.catalog import CatalogSource
+
+    source = CatalogSource.__new__(CatalogSource)
+    source.api = mock.Mock()
+    source.api.get_album.return_value = {
+        "title": "Ocean",
+        "artists": [{"name": "Kai"}],
+        "year": "2025",
+        "thumbnails": [{"width": 64, "url": "small.jpg"}, {"width": 640, "url": "big.jpg"}],
+        "tracks": [
+            {"videoId": "t1", "title": "Wave One", "duration": "3:10"},
+            {"videoId": "t2", "title": "Wave Two", "duration": "3:20"},
+        ],
+    }
+    result = source.album("MPREb123")
+    assert result["cover"] == "big.jpg"
+    assert all(t.artwork_url == "big.jpg" for t in result["tracks"])
+    assert [t.title for t in result["tracks"]] == ["Wave One", "Wave Two"]

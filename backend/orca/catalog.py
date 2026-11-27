@@ -35,11 +35,12 @@ _FILTER_ALIASES = {
 # clean results (demoted, never dropped, so genuine remixes stay reachable).
 _JUNK_TITLE_RE = re.compile(
     r"\bshorts?\b|\bclips?\b|\btiktok\b|\bmeme\b|\breactions?\b"
-    r"|status\s*(?:video|song|whatsapp)s?\b",
+    r"|status\s*(?:video|song|whatsapp)s?\b"
+    r"|\bvlog\b|\bpodcasts?\b|\binterviews?\b",
     re.IGNORECASE,
 )
 _SPAM_TITLE_RE = re.compile(
-    r"sped\s*up|slowed(?:\s*down)?|nightcore|8d\s*audio|montage"
+    r"sped\s*up|speed\s*up|slowed(?:\s*down)?|nightcore|daycore|8d\s*audio|montage"
     r"|\breverb\b|bass\s*boosted|\blyrics?\b.*\bvideo\b"
     r"|\bmashups?\b|cover\s+version\b|\bremix(?:es)?\b",
     re.IGNORECASE,
@@ -246,15 +247,6 @@ class CatalogSource:
         if not isinstance(data, dict):
             return {}
 
-        tracks: List[Song] = []
-        for raw in data.get("tracks") or []:
-            if not isinstance(raw, dict):
-                continue
-            item = {**raw, "resultType": "song"}
-            song = self._build(item, duration_key="duration")
-            if song is not None:
-                tracks.append(song)
-
         thumbnails = data.get("thumbnails") or []
         cover = ""
         if thumbnails:
@@ -262,6 +254,20 @@ class CatalogSource:
                 cover = sorted(thumbnails, key=lambda t: t.get("width", 0))[-1]["url"]
             except (IndexError, KeyError, TypeError):
                 cover = ""
+
+        tracks: List[Song] = []
+        for raw in data.get("tracks") or []:
+            if not isinstance(raw, dict):
+                continue
+            item = {**raw, "resultType": "song"}
+            song = self._build(item, duration_key="duration")
+            if song is not None:
+                # Album tracklists carry no per-track thumbnails: show the
+                # album cover on every row so the tracklist has artwork.
+                if not song.artwork_url and cover:
+                    song.artwork_url = cover
+                tracks.append(song)
+
         artist = _artist_line({"artists": data.get("artists") or []})
         return {
             "browseId": browse_id,

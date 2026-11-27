@@ -21,6 +21,7 @@ import { MusicTile } from "./Shared";
 import { formatTime, usePlayerStore } from "../state/player";
 import { useLibraryStore } from "../state/libraryStore";
 import { activePip, canDocumentPip, openPipWindow } from "../services/pip";
+import { useIsMobile } from "../utils/device";
 import MiniPlayer from "./MiniPlayer";
 
 type SliderKind = "seek" | "volume";
@@ -61,6 +62,7 @@ export default function NowPlayingBar() {
   const notify = usePlayerStore((s) => s.notify);
   const lastError = usePlayerStore((s) => s.lastError);
   const retryCurrent = usePlayerStore((s) => s.retryCurrent);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     document.title = current
@@ -263,15 +265,17 @@ export default function NowPlayingBar() {
         >
           <LyricsIcon size={16} />
         </button>
-        <button
-          className={`bar__ctrl${pipOpen ? " bar__ctrl--on" : ""}`}
-          aria-label="Picture-in-Picture"
-          aria-pressed={pipOpen}
-          title={pipOpen ? "Exit picture-in-picture" : "Picture-in-Picture"}
-          onClick={() => void togglePip()}
-        >
-          <PipIcon size={16} />
-        </button>
+        {!isMobile && (
+          <button
+            className={`bar__ctrl${pipOpen ? " bar__ctrl--on" : ""}`}
+            aria-label="Picture-in-Picture"
+            aria-pressed={pipOpen}
+            title={pipOpen ? "Exit picture-in-picture" : "Picture-in-Picture"}
+            onClick={() => void togglePip()}
+          >
+            <PipIcon size={16} />
+          </button>
+        )}
         <button
           className="bar__ctrl"
           aria-label="Queue"

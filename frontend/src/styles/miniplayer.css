@@ -236,3 +236,79 @@
     transform: rotate(360deg);
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * Small PiP windows: the floating window can be resized into a corner, so the
+ * layout must compress without ever losing the transport controls. Media
+ * queries inside the PiP document respond to the PiP window's own size.
+ * ------------------------------------------------------------------------- */
+
+@media (max-width: 320px), (max-height: 160px) {
+  .miniplayer {
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .miniplayer__art {
+    flex: 0 0 56px;
+    width: 56px;
+    height: 56px;
+  }
+
+  .miniplayer__art-fallback {
+    font-size: 22px;
+  }
+
+  .miniplayer__title {
+    font-size: 12.5px;
+  }
+
+  .miniplayer__artist {
+    font-size: 11px;
+  }
+
+  .miniplayer__like {
+    width: 30px;
+    height: 30px;
+  }
+
+  .miniplayer__close {
+    width: 24px;
+    height: 24px;
+    font-size: 13px;
+  }
+
+  .miniplayer__body {
+    gap: 4px;
+  }
+}
+
+/* Extremely small windows: art and timestamps step aside; prev / play / next
+ * always remain reachable. */
+@media (max-width: 260px), (max-height: 132px) {
+  .miniplayer__art {
+    display: none;
+  }
+
+  .miniplayer__progress {
+    height: 3px;
+  }
+
+  .miniplayer__times {
+    display: none;
+  }
+
+  .miniplayer__controls {
+    gap: 6px;
+  }
+
+  .miniplayer__ctrl {
+    width: 32px;
+    height: 32px;
+  }
+
+  .miniplayer__play {
+    width: 40px;
+    height: 40px;
+  }
+}

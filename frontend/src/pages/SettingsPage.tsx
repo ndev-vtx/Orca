@@ -274,10 +274,7 @@ export default function SettingsPage() {
 
         <section className="settings__section settings__section--about">
           <h2 className="settings__heading">About &amp; Credits</h2>
-          <p className="settings__hint">
-            Orca — a deep, floating ocean of music. Streaming runs on YouTube Music
-            discovery, LRCLIB lyrics and the official YouTube player.
-          </p>
+          <p className="settings__hint">Orca — a deep, floating ocean of music.</p>
           <div className="settings__credit-card">
             <span className="settings__credit-avatar" aria-hidden="true">
               NKN

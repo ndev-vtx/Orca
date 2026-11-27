@@ -9,6 +9,7 @@ interface GoogleIdConfig {
   client_id: string;
   callback: (response: { credential?: string }) => void;
   auto_select?: boolean;
+  error_callback?: (error: { type?: string; message?: string }) => void;
 }
 
 interface GoogleIdApi {
@@ -77,6 +78,7 @@ export default function AuthModal() {
   const [error, setError] = useState("");
   const [googleReady, setGoogleReady] = useState(false);
   const [googleBlocked, setGoogleBlocked] = useState(false);
+  const [googleError, setGoogleError] = useState("");
   const googleHostRef = useRef<HTMLDivElement | null>(null);
 
   // Sync tab with whatever mode the store opened on.
@@ -114,6 +116,17 @@ export default function AuthModal() {
             if (response.credential) void googleSignIn(response.credential).then((err) => {
               if (err) setError(err);
             });
+          },
+          /*
+           * GIS surfaces configuration problems here (origin_mismatch,
+           * invalid client id, popups blocked). Turn them into an
+           * actionable message: Google only accepts sign-ins from origins
+           * whitelisted as Authorized JavaScript origins.
+           */
+          error_callback: (err) => {
+            const kind = err?.type || "unknown_error";
+            setGoogleError(kind);
+            setGoogleBlocked(true);
           },
         });
         w.google!.accounts.id.renderButton(googleHostRef.current, {
@@ -266,7 +279,9 @@ export default function AuthModal() {
               </button>
               <p className="auth__google-note">
                 {googleBlocked
-                  ? "Google sign-in could not load right now — email sign-in still works."
+                  ? googleError === "origin_mismatch"
+                    ? `Google rejected this origin. In Google Cloud Console → Credentials → your OAuth client, add "${window.location.origin}" to Authorized JavaScript origins, save, then reload.`
+                    : `Google sign-in isn't available right now (${googleError || "could not load"}). Email sign-in still works.`
                   : "Google sign-in isn't configured on this deployment — use email instead."}
               </p>
             </div>

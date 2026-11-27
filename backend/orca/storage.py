@@ -13,10 +13,9 @@ import sqlite3
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Generator, List, Optional, Union
+from typing import Generator, List, Optional
 
 from .models import Song
-from .turso import TursoConnection, turso_config
 
 log = logging.getLogger(__name__)
 
@@ -26,33 +25,15 @@ TOKEN_TTL_S = 60 * 60 * 24 * 30  # bearer token lifetime: 30 days
 
 
 class OrcaStorage:
-    """Persistent storage for favorites, history, playlists and accounts.
+    """Manages SQLite database for user favorites, history, playlists and accounts."""
 
-    Backends: local SQLite (default) or Turso/libSQL over HTTP when
-    ORCA_TURSO_DATABASE_URL is set — one shared database across every
-    serverless instance instead of each Vercel instance's ephemeral /tmp.
-    Every storage method works unchanged against either backend.
-    """
-
-    def __init__(self, db_path: Union[Path, str] = DB_FILENAME) -> None:
-        config = turso_config()
-        if config:
-            url, token = config
-            self._turso_url = url
-            self._turso_token = token
-            self.db_path = Path(db_path)  # informational only on Turso
-            self._backend = "turso"
-        else:
-            self.db_path = Path(db_path)
-            self._backend = "sqlite"
+    def __init__(self, db_path: Path | str) -> None:
+        self.db_path = Path(db_path)
         self._ensure_tables()
 
     @contextmanager
-    def _connection(self) -> Generator[Union[sqlite3.Connection, TursoConnection], None, None]:
-        """Context manager yielding a connection for the active backend."""
-        if self._backend == "turso":
-            yield TursoConnection(self._turso_url, self._turso_token)
-            return
+    def _connection(self) -> Generator[sqlite3.Connection, None, None]:
+        """Context manager guaranteeing connection closure, rollback, and proper locking."""
         conn = sqlite3.connect(str(self.db_path), timeout=10.0)
         conn.row_factory = sqlite3.Row
         try:
@@ -183,9 +164,9 @@ class OrcaStorage:
                     conn.execute("ALTER TABLE playlist_tracks ADD COLUMN position INTEGER DEFAULT 0;")
 
                 conn.commit()
-            log.info("Orca storage initialized (%s backend)", self._backend)
+            log.info("Orca storage initialized at %s", self.db_path)
         except Exception as exc:
-            log.error("Failed to initialize Orca storage (%s): %s", self._backend, exc)
+            log.error("Failed to initialize Orca storage at %s: %s", self.db_path, exc)
 
     # ---------------------------------------------------------------- favorites
     def add_favorite(self, song: Song) -> None:
