@@ -7,6 +7,7 @@ import PlaylistModal from "../components/PlaylistModal";
 import { api } from "../services/api";
 import type { SongDto } from "../types";
 import { usePlayerStore } from "../state/player";
+import { TrackRow } from "./TrackPage";
 import { HeartIcon, PlusIcon, QueueIcon, ImportIcon, HistoryIcon } from "../components/Icons";
 
 export default function LibraryPage() {
@@ -14,7 +15,6 @@ export default function LibraryPage() {
   const playlists = useLibraryStore((s) => s.playlists);
   const savedTracks = useLibraryStore((s) => s.savedTracks);
   const play = usePlayerStore((s) => s.play);
-  const currentId = usePlayerStore((s) => s.current?.videoId ?? null);
 
   const [history, setHistory] = useState<SongDto[]>([]);
   const [modal, setModal] = useState<null | "create" | "import">(null);
@@ -129,24 +129,12 @@ export default function LibraryPage() {
         ) : (
           <div className="tracktable">
             {savedTracks.map((t, i) => (
-              <div
-                key={t.videoId}
-                className={`tracktable__row${currentId === t.videoId ? " tracktable__row--active" : ""}`}
-                role="button"
-                tabIndex={0}
-                onClick={() => play(savedTracks, i, "library:saved")}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") play(savedTracks, i, "library:saved");
-                }}
-              >
-                <span className="tracktable__num">{i + 1}</span>
-                {t.artworkUrl && <img src={t.artworkUrl} alt="" loading="lazy" />}
-                <span className="tracktable__title">
-                  {t.title}
-                  <em>{t.artist}</em>
-                </span>
-                <span className="tracktable__dur">{t.duration}</span>
-              </div>
+              <TrackRow
+                key={`${t.videoId}-${i}`}
+                track={t}
+                index={i}
+                onPlay={() => play(savedTracks, i, "library:saved")}
+              />
             ))}
           </div>
         )}
@@ -159,24 +147,12 @@ export default function LibraryPage() {
         ) : (
           <div className="tracktable">
             {history.map((t, i) => (
-              <div
+              <TrackRow
                 key={`${t.videoId}-${i}`}
-                className={`tracktable__row${currentId === t.videoId ? " tracktable__row--active" : ""}`}
-                role="button"
-                tabIndex={0}
-                onClick={() => play(history, i, "library:history")}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") play(history, i, "library:history");
-                }}
-              >
-                <span className="tracktable__num">{i + 1}</span>
-                {t.artworkUrl && <img src={t.artworkUrl} alt="" loading="lazy" />}
-                <span className="tracktable__title">
-                  {t.title}
-                  <em>{t.artist}</em>
-                </span>
-                <span className="tracktable__dur">{t.duration}</span>
-              </div>
+                track={t}
+                index={i}
+                onPlay={() => play(history, i, "library:history")}
+              />
             ))}
           </div>
         )}

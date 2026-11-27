@@ -18,6 +18,7 @@ class Song:
     artist: str
     duration: str = ""
     artwork_url: str = ""
+    album: str = ""
     stream_url: Optional[str] = None
     type: str = "song"
 
@@ -50,6 +51,7 @@ class Song:
             artist=str(data.get("artist", "unknown artist")),
             duration=str(data.get("duration", "")),
             artwork_url=str(data.get("artwork_url", "")),
+            album=str(data.get("album", "")),
             stream_url=data.get("stream_url"),
             type=str(data.get("type", "song")),
         )

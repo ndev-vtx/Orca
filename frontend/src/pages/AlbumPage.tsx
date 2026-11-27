@@ -5,6 +5,7 @@ import TopBar from "../components/TopBar";
 import { PlayIcon } from "../components/Icons";
 import { MusicTile } from "../components/Shared";
 import { usePlayerStore } from "../state/player";
+import { TrackRow } from "./TrackPage";
 
 export default function AlbumPage() {
   const { browseId } = useParams();
@@ -12,7 +13,6 @@ export default function AlbumPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const play = usePlayerStore((s) => s.play);
-  const currentId = usePlayerStore((s) => s.current?.videoId ?? null);
 
   useEffect(() => {
     let live = true;
@@ -70,24 +70,12 @@ export default function AlbumPage() {
             </div>
             <div className="tracktable">
               {tracks.map((t, i) => (
-                <div
+                <TrackRow
                   key={`${t.videoId}-${i}`}
-                  className={`tracktable__row${currentId === t.videoId ? " tracktable__row--active" : ""}`}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => play(tracks, i, `album:${album.browseId}`)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") play(tracks, i, `album:${album.browseId}`);
-                  }}
-                >
-                  <span className="tracktable__num">{i + 1}</span>
-                  {t.artworkUrl && <img src={t.artworkUrl} alt="" loading="lazy" />}
-                  <span className="tracktable__title">
-                    {t.title}
-                    <em>{t.artist}</em>
-                  </span>
-                  <span className="tracktable__dur">{t.duration}</span>
-                </div>
+                  track={t}
+                  index={i}
+                  onPlay={() => play(tracks, i, `album:${album.browseId}`)}
+                />
               ))}
             </div>
           </>

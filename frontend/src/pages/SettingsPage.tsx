@@ -157,7 +157,9 @@ export default function SettingsPage() {
               <div className="settings__account-info">
                 <span className="settings__account-name">Browsing as guest</span>
                 <span className="settings__account-email">
-                  Favorites and playlists stay on this device. Sign in to sync them.
+                  Favorites, history and playlists live in the shared guest
+                  library on this Orca server. Sign in to keep yours private
+                  to your account.
                 </span>
               </div>
               <button

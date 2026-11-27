@@ -136,6 +136,11 @@ export default function NowPlayingBar() {
     setFallbackOpen(true);
   };
 
+  // Keep the handler in a ref so the listener is registered exactly once per
+  // open-state change instead of on every render (M9).
+  const togglePipRef = useRef(togglePip);
+  togglePipRef.current = togglePip;
+
   // Desktop: auto-open the mini-player when the user switches tabs while
   // music is playing (never while paused — manual button only then).
   useEffect(() => {
@@ -145,11 +150,11 @@ export default function NowPlayingBar() {
       const st = usePlayerStore.getState();
       if (!st.playing || pipOpen) return;
       if (!canDocumentPip()) return; // graceful: browsers that block auto-open just keep playing in-tab
-      void togglePip();
+      void togglePipRef.current();
     };
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
-  });
+  }, [pipOpen, isMobile]);
 
   return (
     <footer className="bar" aria-label="Now playing">

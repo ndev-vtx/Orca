@@ -4,8 +4,14 @@ export interface SongDto {
   artist: string;
   duration: string;
   artworkUrl: string;
+  album?: string;
   streamUrl?: string | null;
   type: string;
+}
+
+/** A track inside a playlist: carries the date it was added. */
+export interface PlaylistTrackDto extends SongDto {
+  addedAt?: string;
 }
 
 export interface HomeSection {
@@ -23,7 +29,7 @@ export interface PlaylistSummary {
 }
 
 export interface PlaylistDetail extends PlaylistSummary {
-  tracks: SongDto[];
+  tracks: PlaylistTrackDto[];
 }
 
 export interface FavoritesResponse {

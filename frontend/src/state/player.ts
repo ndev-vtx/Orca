@@ -56,6 +56,50 @@ function loadRepeat(): RepeatMode {
   return REPEAT_MODES.includes(raw as RepeatMode) ? (raw as RepeatMode) : "off";
 }
 
+/*
+ * C5: the queue survives reloads. A debounced snapshot of the queue, cursor,
+ * context and live position is written to localStorage; on boot the store
+ * starts paused on the saved track and the first play/toggle resumes from the
+ * saved position.
+ */
+export const PLAYER_SESSION_KEY = "orca.player.session";
+const SESSION_QUEUE_CAP = 80;
+const SESSION_SAVE_DEBOUNCE_MS = 2000;
+
+interface PersistedSession {
+  queue: SongDto[];
+  cursor: number;
+  context: string;
+  positionMs: number;
+  savedAt: number;
+}
+
+function loadSession(): PersistedSession | null {
+  try {
+    const raw = localStorage.getItem(PLAYER_SESSION_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw) as PersistedSession;
+    if (!Array.isArray(data.queue)) return null;
+    const queue = data.queue
+      .filter((s) => s && typeof s.videoId === "string" && s.videoId.length > 0)
+      .slice(0, SESSION_QUEUE_CAP);
+    if (queue.length === 0) return null;
+    const cursor = Math.max(0, Math.min(Math.trunc(Number(data.cursor) || 0), queue.length - 1));
+    return {
+      queue,
+      cursor,
+      context: typeof data.context === "string" && data.context ? data.context : "manual",
+      positionMs: Math.max(0, Math.trunc(Number(data.positionMs) || 0)),
+      savedAt: Number(data.savedAt) || 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+const restoredSession = loadSession();
+let restoredPositionMs = restoredSession?.positionMs ?? 0;
+
 export function formatTime(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
   const minutes = Math.floor(total / 60);
@@ -116,6 +160,7 @@ interface PlaybackState {
 }
 
 let noticeTimer: number | null = null;
+let sessionSaveTimer: number | null = null;
 let engineBound = false;
 const deadTracks = new Set<string>();
 let loadedId: string | null = null;
@@ -141,6 +186,41 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
 
   function proxyStreamUrl(song: SongDto): string {
     return api.streamUrl(song.videoId, "proxy");
+  }
+
+  function persistSession(): void {
+    if (sessionSaveTimer !== null) {
+      window.clearTimeout(sessionSaveTimer);
+      sessionSaveTimer = null;
+    }
+    try {
+      const state = get();
+      if (state.queue.length === 0 || !state.current) {
+        localStorage.removeItem(PLAYER_SESSION_KEY);
+        return;
+      }
+      const currentRow = state.queue[state.cursor];
+      const session: PersistedSession = {
+        queue: state.queue
+          .slice(0, SESSION_QUEUE_CAP)
+          .map((s) => ({ ...s, streamUrl: undefined })),
+        cursor: Math.max(0, state.cursor),
+        context: state.context,
+        positionMs: currentRow && currentRow.videoId === state.current.videoId ? state.positionMs : 0,
+        savedAt: Date.now(),
+      };
+      localStorage.setItem(PLAYER_SESSION_KEY, JSON.stringify(session));
+    } catch {
+      /* storage unavailable or full — session persistence is best-effort */
+    }
+  }
+
+  function scheduleSessionSave(): void {
+    if (sessionSaveTimer !== null) return;
+    sessionSaveTimer = window.setTimeout(() => {
+      sessionSaveTimer = null;
+      persistSession();
+    }, SESSION_SAVE_DEBOUNCE_MS);
   }
 
   function failTrack(song: SongDto, message: string, permanent: boolean): void {
@@ -253,6 +333,7 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
     switch (event.type) {
       case "progress": {
         set({ positionMs: event.positionMs, durationMs: event.durationMs });
+        scheduleSessionSave();
         if (
           "mediaSession" in navigator &&
           event.durationMs > 0 &&
@@ -279,6 +360,7 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
         break;
       case "paused":
         set({ playing: false });
+        persistSession();
         if ("mediaSession" in navigator) {
           navigator.mediaSession.playbackState = "paused";
         }
@@ -363,6 +445,7 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
           return;
         }
         set({ queue: [...state.queue, ...fresh] });
+        scheduleSessionSave();
         if (advanceAfterRadio) {
           advanceAfterRadio = false;
           get().next(true);
@@ -378,10 +461,10 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
   }
 
   return {
-    queue: [],
-    cursor: -1,
-    current: null,
-    context: "manual",
+    queue: restoredSession ? restoredSession.queue : [],
+    cursor: restoredSession ? restoredSession.cursor : -1,
+    current: restoredSession ? restoredSession.queue[restoredSession.cursor] ?? null : null,
+    context: restoredSession ? restoredSession.context : "manual",
     playing: false,
     loading: false,
     notice: "",
@@ -407,6 +490,11 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
       audioEngine.setVolume(get().volume, get().muted, get().normalizeVolume);
       audioEngine.subscribe(onEngineEvent);
       wireMediaSession();
+      // Flush the queue snapshot when the tab is closed or hidden mid-play.
+      window.addEventListener("pagehide", persistSession);
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") persistSession();
+      });
     },
 
     play: (songs, startIndex = 0, context = "manual") => {
@@ -422,6 +510,7 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
         context,
       });
       startLoad(song, 0);
+      scheduleSessionSave();
       if (filtered.length <= index + 1) expandRadio(song);
     },
 
@@ -435,6 +524,7 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
       advanceAfterRadio = false;
       set({ queue: [song], cursor: 0, context });
       startLoad(song, 0);
+      scheduleSessionSave();
       expandRadio(song);
     },
 
@@ -446,6 +536,7 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
       advanceAfterRadio = false;
       set({ cursor: index, context: get().context || "queue" });
       startLoad(song, 0);
+      scheduleSessionSave();
       if (index + 1 >= queue.length) expandRadio(song);
     },
 
@@ -461,6 +552,7 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
         return;
       }
       set({ queue: [...queue, song] });
+      scheduleSessionSave();
       announce(`Added to queue — ${song.title}`);
     },
 
@@ -468,12 +560,14 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
       const { queue, cursor } = get();
       if (index <= cursor || index >= queue.length) return; // played + current stay
       set({ queue: queue.filter((_, i) => i !== index) });
+      scheduleSessionSave();
     },
 
     clearQueue: () => {
       const { queue, cursor } = get();
       // Keep the playing track; drop everything queued after it.
       set({ queue: queue.slice(0, cursor + 1) });
+      scheduleSessionSave();
     },
 
     retryCurrent: () => {
@@ -494,7 +588,9 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
         return;
       }
       if (state.current) {
-        startLoad(state.current, 0);
+        // First toggle after a reload resumes the persisted track/position.
+        startLoad(state.current, restoredPositionMs);
+        restoredPositionMs = 0;
         return;
       }
       if (state.queue.length > 0) {
@@ -616,6 +712,7 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
         [upcoming[i], upcoming[j]] = [upcoming[j], upcoming[i]];
       }
       set({ queue: [...state.queue.slice(0, state.cursor + 1), ...upcoming] });
+      scheduleSessionSave();
       announce("upcoming queue shuffled");
     },
 

@@ -26,6 +26,7 @@ interface LibraryState {
   toggleSaved: (song: SongDto) => Promise<void>;
   createPlaylist: (name: string) => Promise<PlaylistSummary>;
   deletePlaylist: (id: number) => Promise<void>;
+  renamePlaylist: (id: number, name: string) => Promise<void>;
   removeFromPlaylist: (id: number, videoId: string) => Promise<void>;
   /** Resolves with the number of tracks that actually landed (duplicates skipped). */
   addTracksToPlaylist: (id: number, songs: SongDto[]) => Promise<number>;
@@ -139,6 +140,12 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   deletePlaylist: async (id) => {
     await api.deletePlaylist(id);
     await get().refreshPlaylists();
+  },
+
+  renamePlaylist: async (id, name) => {
+    await api.renamePlaylist(id, name);
+    await get().refreshPlaylists();
+    set({ playlistVersion: get().playlistVersion + 1 });
   },
 
   removeFromPlaylist: async (id, videoId) => {

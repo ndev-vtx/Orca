@@ -20,10 +20,17 @@ class SongDto(BaseModel):
     artist: str = ""
     duration: str = ""
     artwork_url: str = Field(default="", alias="artworkUrl")
+    album: str = ""
     stream_url: Optional[str] = Field(default=None, alias="streamUrl")
     type: str = "song"
 
     model_config = {"populate_by_name": True}
+
+
+class PlaylistTrackDto(SongDto):
+    """A track inside a playlist: adds the date it was added for the table."""
+
+    added_at: str = Field(default="", alias="addedAt")
 
 
 class ResolveRequest(BaseModel):
@@ -71,7 +78,7 @@ class PlaylistSummary(BaseModel):
 
 
 class PlaylistDetail(PlaylistSummary):
-    tracks: List[SongDto] = []
+    tracks: List[PlaylistTrackDto] = []
 
 
 class CreatePlaylistRequest(BaseModel):

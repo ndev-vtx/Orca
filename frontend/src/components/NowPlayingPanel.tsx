@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../services/api";
 import type { TrackDetail } from "../types";
 import { MusicTile } from "./Shared";
+import { MoreIcon } from "./Icons";
 import { usePlayerStore } from "../state/player";
 import { useUiStore } from "../state/uiStore";
 import { useIsMobile } from "../utils/device";
@@ -12,6 +13,9 @@ import { useIsMobile } from "../utils/device";
  * the credit line (channel / source) for the current track. Hidden on mobile,
  * where the full-height TrackPage takes over that role.
  */
+/* Track details (credits/album/year) cached across panel re-mounts (M8). */
+const detailCache = new Map<string, TrackDetail>();
+
 export default function NowPlayingPanel() {
   const current = usePlayerStore((s) => s.current);
   const playing = usePlayerStore((s) => s.playing);
@@ -23,12 +27,18 @@ export default function NowPlayingPanel() {
   const [open, setOpen] = useState(true);
 
   useEffect(() => {
-    setDetail(null);
     if (!current) return;
     let live = true;
+    const cached = detailCache.get(current.videoId);
+    if (cached) {
+      setDetail(cached);
+      return;
+    }
+    setDetail(null);
     api
       .track(current.videoId)
       .then((d) => {
+        detailCache.set(current.videoId, d);
         if (live) setDetail(d);
       })
       .catch(() => {
@@ -85,7 +95,7 @@ export default function NowPlayingPanel() {
                 openMenu(current, { x: e.clientX, y: e.clientY })
               }
             >
-              ⋯
+              <MoreIcon size={15} />
             </button>
           </div>
           <div className="np-panel__credits">

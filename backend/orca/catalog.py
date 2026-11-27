@@ -726,11 +726,19 @@ class CatalogSource:
         else:
             raw_title = str(item.get("title") or "untitled").strip()
             
+        album_item = item.get("album")
+        album_name = ""
+        if isinstance(album_item, dict):
+            album_name = str(album_item.get("name") or "").strip()
+        elif isinstance(album_item, str):
+            album_name = album_item.strip()
+
         return Song(
             video_id=str(video_id).strip(),
             title=html.unescape(raw_title),
             artist=_artist_line(item),
             duration=duration,
             artwork_url=_artwork_url(item),
+            album=album_name,
             type=result_type,
         )

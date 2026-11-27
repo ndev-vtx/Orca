@@ -57,6 +57,14 @@ function del<T>(path: string): Promise<T> {
   return request<T>(path, { method: "DELETE" });
 }
 
+function patch<T>(path: string, body: unknown): Promise<T> {
+  return request<T>(path, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 export interface ResolveStreamResult {
   url: string;
   error: string;
@@ -126,6 +134,9 @@ export const api = {
 
   deletePlaylist: (id: number) =>
     del<Record<string, never>>(`/api/library/playlists/${id}`),
+
+  renamePlaylist: (id: number, name: string) =>
+    patch<Record<string, never>>(`/api/library/playlists/${id}`, { name }),
 
   addToPlaylist: (id: number, songs: SongDto[]) =>
     post<{ ok: boolean; added?: number }>(`/api/library/playlists/${id}/tracks`, { songs }),

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 import asyncio
+from datetime import datetime, timezone
 import json
 import logging
 import os
@@ -65,6 +66,7 @@ from .schemas import (
     NowPlayingRequest,
     PlaylistDetail,
     PlaylistSummary,
+    PlaylistTrackDto,
     RenamePlaylistRequest,
     ResolveProxyResponse,
     ResolveRequest,
@@ -223,6 +225,16 @@ def _dtos(songs: List[Song]) -> List[SongDto]:
     return [_song_dto(s) for s in songs if s and s.video_id]
 
 
+def _added_at_iso(ts: Any) -> str:
+    """playlist_tracks.added_at is an epoch float; the client wants ISO."""
+    try:
+        if ts is None or ts == "":
+            return ""
+        return datetime.fromtimestamp(float(ts), tz=timezone.utc).isoformat()
+    except (ValueError, TypeError, OSError, OverflowError):
+        return ""
+
+
 # --------------------------------------------------------------- app factory
 deps = {
     "catalog": get_catalog,
@@ -294,6 +306,19 @@ def create_app() -> FastAPI:
         if user_id is None:
             return None
         return storage.get_user(user_id)
+
+    def resolve_scope(
+        request: Request, storage: OrcaStorage = Depends(deps["storage"])
+    ) -> str:
+        """Library data scope: signed-in users get private shelves, guests share 'anon'.
+
+        Same token verification as /api/auth/me, exposed as a FastAPI
+        dependency so every /api/library route can scope its storage calls.
+        """
+        user = current_user(request, storage)
+        return f"user:{user['id']}" if user else "anon"
+
+    deps["scope"] = resolve_scope
 
     def user_dto(row: Dict[str, Any]) -> "UserDto":
         return UserDto(
@@ -635,14 +660,18 @@ def create_app() -> FastAPI:
 
     # ------------------------------------------------------------- library
     @app.get("/api/library/favorites", response_model=FavoritesResponse)
-    def favorites(storage: OrcaStorage = Depends(deps["storage"])) -> FavoritesResponse:
-        songs = storage.get_favorites()
+    def favorites(
+        storage: OrcaStorage = Depends(deps["storage"]),
+        scope: str = Depends(deps["scope"]),
+    ) -> FavoritesResponse:
+        songs = storage.get_favorites(scope=scope)
         return FavoritesResponse(favorites=_dtos(songs), ids=[s.video_id for s in songs])
 
     @app.post("/api/library/favorites", response_model=BroadcastResponse)
     def add_favorite(
         song: SongDto,
         storage: OrcaStorage = Depends(deps["storage"]),
+        scope: str = Depends(deps["scope"]),
     ) -> BroadcastResponse:
         storage.add_favorite(
             Song(
@@ -651,8 +680,10 @@ def create_app() -> FastAPI:
                 artist=song.artist,
                 duration=song.duration,
                 artwork_url=song.artwork_url,
+                album=song.album,
                 type=song.type,
-            )
+            ),
+            scope=scope,
         )
         manager.broadcast_threadsafe(
             {"type": "favorites_changed", "payload": {"videoId": song.video_id}}
@@ -663,8 +694,9 @@ def create_app() -> FastAPI:
     def remove_favorite(
         video_id: str,
         storage: OrcaStorage = Depends(deps["storage"]),
+        scope: str = Depends(deps["scope"]),
     ) -> BroadcastResponse:
-        storage.remove_favorite(video_id)
+        storage.remove_favorite(video_id, scope=scope)
         manager.broadcast_threadsafe(
             {"type": "favorites_changed", "payload": {"videoId": video_id}}
         )
@@ -674,19 +706,28 @@ def create_app() -> FastAPI:
     def favorite_status(
         video_id: str,
         storage: OrcaStorage = Depends(deps["storage"]),
+        scope: str = Depends(deps["scope"]),
     ) -> FavoriteStatusResponse:
-        return FavoriteStatusResponse(videoId=video_id, isFavorite=storage.is_favorite(video_id))
+        return FavoriteStatusResponse(
+            videoId=video_id, isFavorite=storage.is_favorite(video_id, scope=scope)
+        )
 
     @app.get("/api/library/history", response_model=HistoryResponse)
     def history(
         limit: int = 50,
         storage: OrcaStorage = Depends(deps["storage"]),
+        scope: str = Depends(deps["scope"]),
     ) -> HistoryResponse:
-        return HistoryResponse(history=_dtos(storage.get_history(limit=max(1, min(limit, 200)))))
+        return HistoryResponse(
+            history=_dtos(storage.get_history(limit=max(1, min(limit, 200)), scope=scope))
+        )
 
     @app.delete("/api/library/history", response_model=BroadcastResponse)
-    def clear_history(storage: OrcaStorage = Depends(deps["storage"])) -> BroadcastResponse:
-        storage.clear_history()
+    def clear_history(
+        storage: OrcaStorage = Depends(deps["storage"]),
+        scope: str = Depends(deps["scope"]),
+    ) -> BroadcastResponse:
+        storage.clear_history(scope=scope)
         manager.broadcast_threadsafe({"type": "history_cleared", "payload": {}})
         return BroadcastResponse(ok=True)
 
@@ -694,6 +735,7 @@ def create_app() -> FastAPI:
     def now_playing(
         body: NowPlayingRequest,
         storage: OrcaStorage = Depends(deps["storage"]),
+        scope: str = Depends(deps["scope"]),
     ) -> BroadcastResponse:
         """Called by the client when a track actually starts; mirrors record_history."""
         song = Song(
@@ -702,10 +744,11 @@ def create_app() -> FastAPI:
             artist=body.song.artist,
             duration=body.song.duration,
             artwork_url=body.song.artwork_url,
+            album=body.song.album,
             type=body.song.type,
         )
         try:
-            storage.record_history(song)
+            storage.record_history(song, scope=scope)
         except Exception as exc:  # noqa: BLE001
             log.error("record_history failed: %s", exc)
             return BroadcastResponse(ok=False)
@@ -725,7 +768,10 @@ def create_app() -> FastAPI:
 
     # ------------------------------------------------------------- playlists
     @app.get("/api/library/playlists", response_model=List[PlaylistSummary])
-    def playlists(storage: OrcaStorage = Depends(deps["storage"])) -> List[PlaylistSummary]:
+    def playlists(
+        storage: OrcaStorage = Depends(deps["storage"]),
+        scope: str = Depends(deps["scope"]),
+    ) -> List[PlaylistSummary]:
         return [
             PlaylistSummary(
                 id=row["id"],
@@ -735,16 +781,17 @@ def create_app() -> FastAPI:
                 createdAt=str(row.get("created_at", "")),
                 trackCount=row.get("track_count", 0),
             )
-            for row in storage.get_playlists()
+            for row in storage.get_playlists(scope=scope)
         ]
 
     @app.post("/api/library/playlists", response_model=PlaylistSummary)
     def create_playlist(
         body: CreatePlaylistRequest,
         storage: OrcaStorage = Depends(deps["storage"]),
+        scope: str = Depends(deps["scope"]),
     ) -> PlaylistSummary:
         pid = storage.create_playlist(
-            body.name, source_type=body.source_type, source_url=body.source_url
+            body.name, scope=scope, source_type=body.source_type, source_url=body.source_url
         )
         row = storage.get_playlist(pid) or {}
         manager.broadcast_threadsafe({"type": "playlists_changed", "payload": {"id": pid}})
@@ -761,11 +808,25 @@ def create_app() -> FastAPI:
     def playlist_detail(
         playlist_id: int,
         storage: OrcaStorage = Depends(deps["storage"]),
+        scope: str = Depends(deps["scope"]),
     ) -> PlaylistDetail:
-        row = storage.get_playlist(playlist_id)
+        row = storage.get_playlist(playlist_id, scope=scope)
         if not row:
             raise HTTPException(status_code=404, detail="playlist not found")
-        tracks = storage.get_playlist_tracks(playlist_id)
+        # Rich rows carry album + added-at for the Spotify-standard table.
+        tracks = [
+            PlaylistTrackDto(
+                videoId=r.get("video_id") or "",
+                title=r.get("title") or "",
+                artist=r.get("artist") or "",
+                duration=r.get("duration") or "",
+                artworkUrl=r.get("artwork_url") or "",
+                album=r.get("album") or "",
+                addedAt=_added_at_iso(r.get("added_at")),
+            )
+            for r in storage.get_playlist_track_rows(playlist_id, scope=scope)
+            if r.get("video_id")
+        ]
         return PlaylistDetail(
             id=row["id"],
             name=row["name"],
@@ -773,15 +834,16 @@ def create_app() -> FastAPI:
             sourceUrl=row.get("source_url", ""),
             createdAt=str(row.get("created_at", "")),
             trackCount=row.get("track_count", 0),
-            tracks=_dtos(tracks),
+            tracks=tracks,
         )
 
     @app.delete("/api/library/playlists/{playlist_id}", response_model=BroadcastResponse)
     def delete_playlist(
         playlist_id: int,
         storage: OrcaStorage = Depends(deps["storage"]),
+        scope: str = Depends(deps["scope"]),
     ) -> BroadcastResponse:
-        if not storage.delete_playlist(playlist_id):
+        if not storage.delete_playlist(playlist_id, scope=scope):
             raise HTTPException(status_code=404, detail="playlist not found")
         manager.broadcast_threadsafe(
             {"type": "playlists_changed", "payload": {"deleted": playlist_id}}
@@ -793,8 +855,9 @@ def create_app() -> FastAPI:
         playlist_id: int,
         body: RenamePlaylistRequest,
         storage: OrcaStorage = Depends(deps["storage"]),
+        scope: str = Depends(deps["scope"]),
     ) -> BroadcastResponse:
-        if not storage.rename_playlist(playlist_id, body.name):
+        if not storage.rename_playlist(playlist_id, body.name, scope=scope):
             raise HTTPException(status_code=404, detail="playlist not found")
         manager.broadcast_threadsafe(
             {"type": "playlists_changed", "payload": {"renamed": playlist_id}}
@@ -806,8 +869,9 @@ def create_app() -> FastAPI:
         playlist_id: int,
         body: AddTracksRequest,
         storage: OrcaStorage = Depends(deps["storage"]),
+        scope: str = Depends(deps["scope"]),
     ) -> BroadcastResponse:
-        if not storage.get_playlist(playlist_id):
+        if not storage.get_playlist(playlist_id, scope=scope):
             raise HTTPException(status_code=404, detail="playlist not found")
         songs = [
             Song(
@@ -816,6 +880,7 @@ def create_app() -> FastAPI:
                 artist=s.artist,
                 duration=s.duration,
                 artwork_url=s.artwork_url,
+                album=s.album,
                 type=s.type,
             )
             for s in body.songs
@@ -823,7 +888,9 @@ def create_app() -> FastAPI:
         ]
         if not songs:
             raise HTTPException(status_code=400, detail="no valid tracks in payload")
-        added = storage.add_tracks_to_playlist(playlist_id, songs)
+        added = storage.add_tracks_to_playlist(playlist_id, songs, scope=scope)
+        if added == 0 and not storage.get_playlist(playlist_id, scope=scope):
+            raise HTTPException(status_code=404, detail="playlist not found")
         manager.broadcast_threadsafe(
             {"type": "playlist_tracks_changed", "payload": {"id": playlist_id}}
         )
@@ -836,8 +903,9 @@ def create_app() -> FastAPI:
         playlist_id: int,
         video_id: str,
         storage: OrcaStorage = Depends(deps["storage"]),
+        scope: str = Depends(deps["scope"]),
     ) -> BroadcastResponse:
-        storage.remove_track_from_playlist(playlist_id, video_id)
+        storage.remove_track_from_playlist(playlist_id, video_id, scope=scope)
         manager.broadcast_threadsafe(
             {"type": "playlist_tracks_changed", "payload": {"id": playlist_id}}
         )
@@ -849,6 +917,7 @@ def create_app() -> FastAPI:
         body: ImportRequest,
         storage: OrcaStorage = Depends(deps["storage"]),
         catalog: CatalogSource = Depends(deps["catalog"]),
+        scope: str = Depends(deps["scope"]),
     ) -> ImportResponse:
         url = (body.url or "").strip()
         if not url:
@@ -881,8 +950,8 @@ def create_app() -> FastAPI:
             songs = [s for s in songs if s.video_id]
             if not songs:
                 return ImportResponse(ok=False, error="No playable tracks found")
-            pid = storage.create_playlist(name, source_type="import", source_url=url)
-            storage.add_tracks_to_playlist(pid, songs)
+            pid = storage.create_playlist(name, scope=scope, source_type="import", source_url=url)
+            storage.add_tracks_to_playlist(pid, songs, scope=scope)
             manager.broadcast_threadsafe(
                 {"type": "playlists_changed", "payload": {"imported": name}}
             )

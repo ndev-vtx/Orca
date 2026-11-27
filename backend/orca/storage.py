@@ -60,12 +60,14 @@ class OrcaStorage:
                 conn.execute(
                     """
                     CREATE TABLE IF NOT EXISTS favorites (
-                        video_id TEXT PRIMARY KEY,
+                        owner TEXT NOT NULL DEFAULT 'anon',
+                        video_id TEXT NOT NULL,
                         title TEXT NOT NULL,
                         artist TEXT NOT NULL,
                         duration TEXT,
                         artwork_url TEXT,
-                        added_at REAL NOT NULL
+                        added_at REAL NOT NULL,
+                        PRIMARY KEY (owner, video_id)
                     );
                     """
                 )
@@ -162,6 +164,66 @@ class OrcaStorage:
                 }
                 if "position" not in track_cols and track_cols:
                     conn.execute("ALTER TABLE playlist_tracks ADD COLUMN position INTEGER DEFAULT 0;")
+                if "album" not in track_cols:
+                    conn.execute("ALTER TABLE playlist_tracks ADD COLUMN album TEXT DEFAULT '';")
+                if "added_at" not in track_cols:
+                    conn.execute("ALTER TABLE playlist_tracks ADD COLUMN added_at REAL;")
+                    # Stamp pre-existing rows so "date added" never renders blank.
+                    conn.execute(
+                        "UPDATE playlist_tracks SET added_at = CAST(strftime('%s','now') AS REAL) WHERE added_at IS NULL;"
+                    )
+
+                # Owner scoping: rows are either 'anon' (guest library) or
+                # 'user:<id>' (signed-in). Existing DBs migrate to 'anon'.
+                pl_cols = {
+                    row["name"]
+                    for row in conn.execute("PRAGMA table_info(playlists);").fetchall()
+                }
+                if "owner" not in pl_cols:
+                    conn.execute("ALTER TABLE playlists ADD COLUMN owner TEXT NOT NULL DEFAULT 'anon';")
+
+                hist_cols = {
+                    row["name"]
+                    for row in conn.execute("PRAGMA table_info(history);").fetchall()
+                }
+                if "owner" not in hist_cols:
+                    conn.execute("ALTER TABLE history ADD COLUMN owner TEXT NOT NULL DEFAULT 'anon';")
+
+                fav_cols = {
+                    row["name"]
+                    for row in conn.execute("PRAGMA table_info(favorites);").fetchall()
+                }
+                if "owner" not in fav_cols:
+                    # Rebuild: the legacy table's PK is video_id alone, which
+                    # would collide across accounts. Copy legacy rows to the
+                    # anon scope, then swap the tables.
+                    conn.execute("DROP TABLE IF EXISTS favorites_migration;")
+                    conn.execute(
+                        """
+                        CREATE TABLE favorites_migration (
+                            owner TEXT NOT NULL DEFAULT 'anon',
+                            video_id TEXT NOT NULL,
+                            title TEXT NOT NULL,
+                            artist TEXT NOT NULL,
+                            duration TEXT,
+                            artwork_url TEXT,
+                            added_at REAL NOT NULL,
+                            PRIMARY KEY (owner, video_id)
+                        );
+                        """
+                    )
+                    # Legacy tables predate added_at; stamp those rows with now.
+                    added_expr = (
+                        "added_at" if "added_at" in fav_cols else "CAST(strftime('%s','now') AS REAL)"
+                    )
+                    conn.execute(
+                        f"""
+                        INSERT OR IGNORE INTO favorites_migration (owner, video_id, title, artist, duration, artwork_url, added_at)
+                        SELECT 'anon', video_id, title, artist, duration, artwork_url, {added_expr} FROM favorites;
+                        """
+                    )
+                    conn.execute("DROP TABLE favorites;")
+                    conn.execute("ALTER TABLE favorites_migration RENAME TO favorites;")
 
                 conn.commit()
             log.info("Orca storage initialized at %s", self.db_path)
@@ -169,17 +231,17 @@ class OrcaStorage:
             log.error("Failed to initialize Orca storage at %s: %s", self.db_path, exc)
 
     # ---------------------------------------------------------------- favorites
-    def add_favorite(self, song: Song) -> None:
-        """Add or update a track in the favorites collection."""
+    def add_favorite(self, song: Song, scope: str = "anon") -> None:
+        """Add or update a track in the favorites collection for this scope."""
         if not song or not song.video_id:
             return
         try:
             with self._connection() as conn:
                 conn.execute(
                     """
-                    INSERT INTO favorites (video_id, title, artist, duration, artwork_url, added_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(video_id) DO UPDATE SET
+                    INSERT INTO favorites (owner, video_id, title, artist, duration, artwork_url, added_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(owner, video_id) DO UPDATE SET
                         title = excluded.title,
                         artist = excluded.artist,
                         duration = excluded.duration,
@@ -187,6 +249,7 @@ class OrcaStorage:
                         added_at = excluded.added_at;
                     """,
                     (
+                        scope,
                         song.video_id,
                         song.title,
                         song.artist,
@@ -200,34 +263,34 @@ class OrcaStorage:
         except Exception as exc:
             log.error("Failed to add favorite %s: %s", song.video_id, exc)
 
-    def remove_favorite(self, video_id: str) -> None:
-        """Remove a track from favorites."""
+    def remove_favorite(self, video_id: str, scope: str = "anon") -> None:
+        """Remove a track from the scope's favorites."""
         if not video_id:
             return
         try:
             with self._connection() as conn:
-                conn.execute("DELETE FROM favorites WHERE video_id = ?;", (video_id,))
+                conn.execute("DELETE FROM favorites WHERE owner = ? AND video_id = ?;", (scope, video_id))
                 conn.commit()
             log.info("Removed favorite: %s", video_id)
         except Exception as exc:
             log.error("Failed to remove favorite %s: %s", video_id, exc)
 
-    def is_favorite(self, video_id: str) -> bool:
-        """Check if a given video_id is favorited."""
+    def is_favorite(self, video_id: str, scope: str = "anon") -> bool:
+        """Check if a given video_id is favorited within this scope."""
         if not video_id:
             return False
         try:
             with self._connection() as conn:
                 cursor = conn.execute(
-                    "SELECT 1 FROM favorites WHERE video_id = ? LIMIT 1;", (video_id,)
+                    "SELECT 1 FROM favorites WHERE owner = ? AND video_id = ? LIMIT 1;", (scope, video_id)
                 )
                 return cursor.fetchone() is not None
         except Exception as exc:
             log.error("Failed to check favorite status for %s: %s", video_id, exc)
             return False
 
-    def get_favorites(self) -> List[Song]:
-        """Fetch all favorited songs ordered by addition time (newest first)."""
+    def get_favorites(self, scope: str = "anon") -> List[Song]:
+        """Fetch the scope's favorited songs ordered by addition time (newest first)."""
         songs: List[Song] = []
         try:
             with self._connection() as conn:
@@ -235,8 +298,10 @@ class OrcaStorage:
                     """
                     SELECT video_id, title, artist, duration, artwork_url
                     FROM favorites
+                    WHERE owner = ?
                     ORDER BY added_at DESC;
-                    """
+                    """,
+                    (scope,),
                 )
                 for row in cursor.fetchall():
                     songs.append(
@@ -253,18 +318,19 @@ class OrcaStorage:
         return songs
 
     # ------------------------------------------------------------------ history
-    def record_history(self, song: Song) -> None:
-        """Record a played track into history, pruning old entries past 300 items."""
+    def record_history(self, song: Song, scope: str = "anon") -> None:
+        """Record a played track into the scope's history, pruning past 300 items."""
         if not song or not song.video_id:
             return
         try:
             with self._connection() as conn:
                 conn.execute(
                     """
-                    INSERT INTO history (video_id, title, artist, duration, artwork_url, played_at)
-                    VALUES (?, ?, ?, ?, ?, ?);
+                    INSERT INTO history (owner, video_id, title, artist, duration, artwork_url, played_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?);
                     """,
                     (
+                        scope,
                         song.video_id,
                         song.title,
                         song.artist,
@@ -273,21 +339,22 @@ class OrcaStorage:
                         time.time(),
                     ),
                 )
-                # Keep max 300 history rows to keep database lean
+                # Keep max 300 history rows per scope to keep database lean
                 conn.execute(
                     """
-                    DELETE FROM history WHERE id NOT IN (
-                        SELECT id FROM history ORDER BY played_at DESC LIMIT 300
+                    DELETE FROM history WHERE owner = ? AND id NOT IN (
+                        SELECT id FROM history WHERE owner = ? ORDER BY played_at DESC LIMIT 300
                     );
-                    """
+                    """,
+                    (scope, scope),
                 )
                 conn.commit()
             log.debug("Recorded playback history for %s", song.video_id)
         except Exception as exc:
             log.error("Failed to record history for %s: %s", song.video_id, exc)
 
-    def get_history(self, limit: int = 50) -> List[Song]:
-        """Fetch recently played tracks (newest first, unique tracks preserved)."""
+    def get_history(self, limit: int = 50, scope: str = "anon") -> List[Song]:
+        """Fetch the scope's recently played tracks (newest first, unique)."""
         songs: List[Song] = []
         try:
             with self._connection() as conn:
@@ -295,11 +362,12 @@ class OrcaStorage:
                     """
                     SELECT video_id, title, artist, duration, artwork_url, MAX(played_at) AS last_played
                     FROM history
+                    WHERE owner = ?
                     GROUP BY video_id
                     ORDER BY last_played DESC
                     LIMIT ?;
                     """,
-                    (limit,),
+                    (scope, limit),
                 )
                 for row in cursor.fetchall():
                     songs.append(
@@ -315,52 +383,64 @@ class OrcaStorage:
             log.error("Failed to fetch playback history: %s", exc)
         return songs
 
-    def clear_history(self) -> None:
-        """Clear all playback history."""
+    def clear_history(self, scope: str = "anon") -> None:
+        """Clear the scope's playback history."""
         try:
             with self._connection() as conn:
-                conn.execute("DELETE FROM history;")
+                conn.execute("DELETE FROM history WHERE owner = ?;", (scope,))
                 conn.commit()
             log.info("Playback history cleared")
         except Exception as exc:
             log.error("Failed to clear history: %s", exc)
 
     # ---------------------------------------------------------------- playlists
-    def create_playlist(self, name: str, source_type: str = "custom", source_url: str = "") -> int:
-        """Create a new playlist and return its ID."""
+    def create_playlist(
+        self,
+        name: str,
+        scope: str = "anon",
+        source_type: str = "custom",
+        source_url: str = "",
+    ) -> int:
+        """Create a new playlist owned by this scope and return its ID."""
         clean_name = (name or "").strip() or "Untitled Playlist"
         with self._connection() as conn:
             cursor = conn.execute(
                 """
-                INSERT INTO playlists (name, source_type, source_url, created_at)
-                VALUES (?, ?, ?, ?);
+                INSERT INTO playlists (name, owner, source_type, source_url, created_at)
+                VALUES (?, ?, ?, ?, ?);
                 """,
-                (clean_name, source_type, source_url, time.time()),
+                (clean_name, scope, source_type, source_url, time.time()),
             )
             conn.commit()
             return int(cursor.lastrowid)
 
-    def delete_playlist(self, playlist_id: int) -> bool:
-        """Delete a playlist and all its contained tracks."""
+    def delete_playlist(self, playlist_id: int, scope: str = "anon") -> bool:
+        """Delete a scope-owned playlist and all its contained tracks."""
         with self._connection() as conn:
-            conn.execute("DELETE FROM playlist_tracks WHERE playlist_id = ?;", (playlist_id,))
-            cursor = conn.execute("DELETE FROM playlists WHERE id = ?;", (playlist_id,))
-            conn.commit()
-            return cursor.rowcount > 0
-
-    def rename_playlist(self, playlist_id: int, new_name: str) -> bool:
-        """Rename an existing playlist."""
-        clean_name = (new_name or "").strip() or "Untitled Playlist"
-        with self._connection() as conn:
+            conn.execute(
+                "DELETE FROM playlist_tracks WHERE playlist_id = ?;",
+                (playlist_id,),
+            )
             cursor = conn.execute(
-                "UPDATE playlists SET name = ? WHERE id = ?;",
-                (clean_name, playlist_id),
+                "DELETE FROM playlists WHERE id = ? AND owner = ?;",
+                (playlist_id, scope),
             )
             conn.commit()
             return cursor.rowcount > 0
 
-    def get_playlists(self) -> List[Dict[str, Any]]:
-        """Return all playlists with track counts and metadata ordered by most recent."""
+    def rename_playlist(self, playlist_id: int, new_name: str, scope: str = "anon") -> bool:
+        """Rename a scope-owned playlist."""
+        clean_name = (new_name or "").strip() or "Untitled Playlist"
+        with self._connection() as conn:
+            cursor = conn.execute(
+                "UPDATE playlists SET name = ? WHERE id = ? AND owner = ?;",
+                (clean_name, playlist_id, scope),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def get_playlists(self, scope: str = "anon") -> List[Dict[str, Any]]:
+        """Return the scope's playlists with track counts, ordered by most recent."""
         with self._connection() as conn:
             rows = conn.execute(
                 """
@@ -368,14 +448,16 @@ class OrcaStorage:
                        COUNT(t.rowid) as track_count
                 FROM playlists p
                 LEFT JOIN playlist_tracks t ON p.id = t.playlist_id
+                WHERE p.owner = ?
                 GROUP BY p.id
                 ORDER BY p.created_at DESC;
-                """
+                """,
+                (scope,),
             ).fetchall()
             return [dict(r) for r in rows]
 
-    def get_playlist(self, playlist_id: int) -> Optional[Dict[str, Any]]:
-        """Return a single playlist with metadata and track count, or None if not found."""
+    def get_playlist(self, playlist_id: int, scope: str = "anon") -> Optional[Dict[str, Any]]:
+        """Return a single scope-owned playlist with metadata, or None if not found."""
         with self._connection() as conn:
             row = conn.execute(
                 """
@@ -383,24 +465,25 @@ class OrcaStorage:
                        COUNT(t.rowid) as track_count
                 FROM playlists p
                 LEFT JOIN playlist_tracks t ON p.id = t.playlist_id
-                WHERE p.id = ?
+                WHERE p.id = ? AND p.owner = ?
                 GROUP BY p.id;
                 """,
-                (playlist_id,),
+                (playlist_id, scope),
             ).fetchone()
             return dict(row) if row else None
 
-    def get_playlist_tracks(self, playlist_id: int) -> List[Song]:
-        """Return all songs in a playlist ordered by their playlist position."""
+    def get_playlist_tracks(self, playlist_id: int, scope: str = "anon") -> List[Song]:
+        """Return all songs in a scope-owned playlist ordered by playlist position."""
         with self._connection() as conn:
             rows = conn.execute(
                 """
-                SELECT video_id, title, artist, duration, artwork_url
-                FROM playlist_tracks
-                WHERE playlist_id = ?
-                ORDER BY position ASC;
+                SELECT t.video_id, t.title, t.artist, t.duration, t.artwork_url, t.album
+                FROM playlist_tracks t
+                JOIN playlists p ON p.id = t.playlist_id
+                WHERE t.playlist_id = ? AND p.owner = ?
+                ORDER BY t.position ASC;
                 """,
-                (playlist_id,),
+                (playlist_id, scope),
             ).fetchall()
             return [
                 Song(
@@ -409,15 +492,38 @@ class OrcaStorage:
                     artist=r["artist"],
                     duration=r["duration"] or "",
                     artwork_url=r["artwork_url"] or "",
+                    album=r["album"] or "",
                 )
                 for r in rows
             ]
 
-    def add_tracks_to_playlist(self, playlist_id: int, songs: List[Song]) -> int:
-        """Append songs to a playlist preserving order and skipping duplicates."""
+    def get_playlist_track_rows(self, playlist_id: int, scope: str = "anon") -> List[Dict[str, Any]]:
+        """Rich playlist rows (album + date added) for the playlist detail view."""
+        with self._connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT t.video_id, t.title, t.artist, t.duration, t.artwork_url,
+                       t.album, t.added_at, t.position
+                FROM playlist_tracks t
+                JOIN playlists p ON p.id = t.playlist_id
+                WHERE t.playlist_id = ? AND p.owner = ?
+                ORDER BY t.position ASC;
+                """,
+                (playlist_id, scope),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def add_tracks_to_playlist(self, playlist_id: int, songs: List[Song], scope: str = "anon") -> int:
+        """Append songs to a scope-owned playlist, preserving order and skipping duplicates."""
         if not songs:
             return 0
         with self._connection() as conn:
+            owned = conn.execute(
+                "SELECT 1 FROM playlists WHERE id = ? AND owner = ?;",
+                (playlist_id, scope),
+            ).fetchone()
+            if owned is None:
+                return 0
             max_pos_row = conn.execute(
                 "SELECT COALESCE(MAX(position), -1) as max_pos FROM playlist_tracks WHERE playlist_id = ?;",
                 (playlist_id,),
@@ -445,7 +551,9 @@ class OrcaStorage:
                         s.artist,
                         s.duration or "",
                         s.artwork_url or "",
+                        getattr(s, "album", "") or "",
                         current_pos,
+                        time.time(),
                     )
                 )
                 current_pos += 1
@@ -454,8 +562,8 @@ class OrcaStorage:
                 conn.executemany(
                     """
                     INSERT INTO playlist_tracks
-                    (playlist_id, video_id, title, artist, duration, artwork_url, position)
-                    VALUES (?, ?, ?, ?, ?, ?, ?);
+                    (playlist_id, video_id, title, artist, duration, artwork_url, album, position, added_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
                     """,
                     records,
                 )
@@ -464,9 +572,15 @@ class OrcaStorage:
         # the UI can tell "added" from "already in the playlist".
         return len(records)
 
-    def remove_track_from_playlist(self, playlist_id: int, video_id: str) -> None:
-        """Remove a track from a playlist and re-compact track positions."""
+    def remove_track_from_playlist(self, playlist_id: int, video_id: str, scope: str = "anon") -> None:
+        """Remove a track from a scope-owned playlist and re-compact positions."""
         with self._connection() as conn:
+            owned = conn.execute(
+                "SELECT 1 FROM playlists WHERE id = ? AND owner = ?;",
+                (playlist_id, scope),
+            ).fetchone()
+            if owned is None:
+                return
             conn.execute(
                 "DELETE FROM playlist_tracks WHERE playlist_id = ? AND video_id = ?;",
                 (playlist_id, video_id),

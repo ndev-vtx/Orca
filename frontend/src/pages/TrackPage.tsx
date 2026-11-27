@@ -299,10 +299,12 @@ export function TrackRow({
   onPlay: () => void;
 }) {
   const currentId = usePlayerStore((s) => s.current?.videoId ?? null);
+  const playing = usePlayerStore((s) => s.playing);
   const openMenu = useUiStore((s) => s.openMenu);
+  const active = currentId === track.videoId;
   return (
     <div
-      className={`tracktable__row${currentId === track.videoId ? " tracktable__row--active" : ""}`}
+      className={`tracktable__row${active ? " tracktable__row--active" : ""}`}
       role="button"
       tabIndex={0}
       onClick={onPlay}
@@ -310,7 +312,17 @@ export function TrackRow({
         if (e.key === "Enter") onPlay();
       }}
     >
-      <span className="tracktable__num">{index + 1}</span>
+      <span className="tracktable__num">
+        {active && playing ? (
+          <span className="eqbars" aria-label="Now playing">
+            <i />
+            <i />
+            <i />
+          </span>
+        ) : (
+          index + 1
+        )}
+      </span>
       {track.artworkUrl && <img src={track.artworkUrl} alt="" loading="lazy" />}
       <span className="tracktable__title">
         {track.title}
