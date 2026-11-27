@@ -138,3 +138,8 @@
   line-height: 1.65;
   color: var(--orca-text);
 }
+
+/* offsetTop of lyric lines is measured against this container. */
+.lyrics__body {
+  position: relative;
+}

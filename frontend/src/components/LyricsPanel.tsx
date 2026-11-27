@@ -32,10 +32,16 @@ export default function LyricsPanel() {
 
   useEffect(() => {
     if (activeIdx < 0) return;
-    lineRefs.current[activeIdx]?.scrollIntoView({
-      block: "center",
-      behavior: "smooth",
-    });
+    /*
+     * Scroll only the lyrics body: scrollIntoView would also scroll every
+     * ancestor scroll container, yanking the page behind the panel on each
+     * new line.
+     */
+    const line = lineRefs.current[activeIdx];
+    const body = bodyRef.current;
+    if (!line || !body) return;
+    const target = line.offsetTop - body.clientHeight / 2 + line.clientHeight / 2;
+    body.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
   }, [activeIdx]);
 
   if (!open) return null;

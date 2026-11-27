@@ -36,3 +36,22 @@ def test_duration_seconds_parses_both_shapes():
 def test_clean_songs_keeps_order_for_clean_titles():
     a, b = song("A", "3:00"), song("B", "4:00")
     assert _clean_songs([a, b]) == [a, b]
+
+
+def test_reaction_and_status_clips_are_dropped():
+    assert _is_junk(song("Song X REACTION !!!!", "12:00"))
+    assert _is_junk(song("Romantic status video 2026", "0:59"))
+    assert _is_junk(song("WhatsApp status song", "1:30"))
+
+
+def test_remix_titles_are_demoted_not_dropped():
+    clean = song("Levitating")
+    remix = song("Levitating (remix)")
+    out = _clean_songs([remix, clean])
+    assert out[0].title == "Levitating"
+    assert len(out) == 2
+
+
+def test_remember_and_members_only_untouched():
+    assert not _is_junk(song("Members Only", "3:21"))
+    assert not _is_junk(song("I Remember You", "3:10"))

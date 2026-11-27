@@ -28,15 +28,20 @@ _FILTER_ALIASES = {
     "playlist": "playlists",
 }
 
-# YouTube Music feeds are noisy: Shorts sections, sub-minute clips, sped-up /
-# slowed / nightcore spam and montage compilations bury real music. Junk items
-# are dropped outright; spam-pattern titles are demoted below clean results.
+# YouTube Music feeds are noisy: Shorts sections (e.g. "Shorts Featured
+# Section VN"), sub-minute clips, reaction/status-video filler, sped-up /
+# slowed / nightcore spam and montage or remix compilations bury real music.
+# Junk items are dropped outright; spam-pattern titles are demoted below
+# clean results (demoted, never dropped, so genuine remixes stay reachable).
 _JUNK_TITLE_RE = re.compile(
-    r"\bshorts?\b|\bclips?\b|\btiktok\b|\bmeme\b", re.IGNORECASE
+    r"\bshorts?\b|\bclips?\b|\btiktok\b|\bmeme\b|\breactions?\b"
+    r"|status\s*(?:video|song|whatsapp)s?\b",
+    re.IGNORECASE,
 )
 _SPAM_TITLE_RE = re.compile(
     r"sped\s*up|slowed(?:\s*down)?|nightcore|8d\s*audio|montage"
-    r"|\breverb\b|bass\s*boosted|\blyrics?\b.*\bvideo\b",
+    r"|\breverb\b|bass\s*boosted|\blyrics?\b.*\bvideo\b"
+    r"|\bmashups?\b|cover\s+version\b|\bremix(?:es)?\b",
     re.IGNORECASE,
 )
 _MIN_TRACK_SECONDS = 90

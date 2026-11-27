@@ -327,3 +327,11 @@
     padding-right: env(safe-area-inset-right, 0px);
   }
 }
+
+/* Very narrow phones: keep Prev / Play / Next comfortably reachable by
+   dropping the secondary transport buttons from the compact bar. */
+@media (max-width: 400px) {
+  .orca-app--mobile .bar__ctrl--extra {
+    display: none;
+  }
+}

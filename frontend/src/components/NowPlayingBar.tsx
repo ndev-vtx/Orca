@@ -193,7 +193,7 @@ export default function NowPlayingBar() {
       <div className="bar__center">
         <div className="bar__controls">
           <button
-            className={`bar__ctrl${shuffle ? " bar__ctrl--on" : ""}`}
+            className={`bar__ctrl bar__ctrl--extra${shuffle ? " bar__ctrl--on" : ""}`}
             aria-label="Shuffle"
             aria-pressed={shuffle}
             title={shuffle ? "Shuffle on" : "Shuffle off"}
@@ -217,7 +217,7 @@ export default function NowPlayingBar() {
             <NextIcon size={18} />
           </button>
           <button
-            className={`bar__ctrl${repeat !== "off" ? " bar__ctrl--on" : ""}`}
+            className={`bar__ctrl bar__ctrl--extra${repeat !== "off" ? " bar__ctrl--on" : ""}`}
             aria-label={`Repeat: ${repeat}`}
             title={`Repeat: ${repeat}`}
             onClick={cycleRepeat}

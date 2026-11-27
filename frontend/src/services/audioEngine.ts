@@ -97,6 +97,7 @@ declare global {
 
 const YT_STATE_PLAYING = 1;
 const YT_STATE_PAUSED = 2;
+const YT_STATE_BUFFERING = 3;
 const YT_STATE_ENDED = 0;
 
 function ytErrorMessage(code: number): string {
@@ -185,7 +186,17 @@ export class AudioEngine {
   /* --------------------------------------------------- <audio> sink ---- */
 
   private wireAudio(): void {
+    /*
+     * Every listener below is gated on the active sink. The <audio> element
+     * is also poked internally while the YouTube sink is live (stopping it
+     * on track switches, the echo guard), and those DOM events must never
+     * leak into the shared event stream — a leaked "paused" would flip the
+     * UI and MediaSession to paused while YouTube keeps sounding, and a
+     * leaked "playing"/"opened" would corrupt the switch guard.
+     */
+    const audioActive = () => this.sink === "audio";
     this.el.addEventListener("timeupdate", () => {
+      if (!audioActive()) return;
       this.emit({
         type: "progress",
         positionMs: this.el.currentTime * 1000,
@@ -193,6 +204,7 @@ export class AudioEngine {
       });
     });
     this.el.addEventListener("durationchange", () => {
+      if (!audioActive()) return;
       this.emit({
         type: "progress",
         positionMs: this.el.currentTime * 1000,
@@ -200,6 +212,7 @@ export class AudioEngine {
       });
     });
     this.el.addEventListener("play", () => {
+      if (!audioActive()) return;
       /*
        * Echo guard: the two sinks must never sound at once. If the
        * <audio> sink starts while the YouTube player is audible, the
@@ -210,24 +223,36 @@ export class AudioEngine {
       }
       this.emit({ type: "playing" });
     });
-    this.el.addEventListener("pause", () => this.emit({ type: "paused" }));
+    this.el.addEventListener("pause", () => {
+      if (!audioActive()) return;
+      this.emit({ type: "paused" });
+    });
     this.el.addEventListener("ended", () => {
+      if (!audioActive()) return;
       const sourceId = this.sourceId;
       this.evictSource();
       this.emit({ type: "ended", sourceId });
     });
     this.el.addEventListener("canplay", () => {
+      if (!audioActive()) return;
       this.evictWatchdog();
       this.emit({ type: "opened" });
     });
     this.el.addEventListener("playing", () => {
+      if (!audioActive()) return;
       this.playingReported = true;
       this.evictWatchdog();
       this.clearStallTimer();
     });
-    this.el.addEventListener("waiting", () => this.armStallTimer());
+    this.el.addEventListener("waiting", () => {
+      if (!audioActive()) return;
+      this.armStallTimer();
+    });
     this.el.addEventListener("suspend", () => this.clearStallTimer());
-    this.el.addEventListener("error", () => this.reportAudioError());
+    this.el.addEventListener("error", () => {
+      if (!audioActive()) return;
+      this.reportAudioError();
+    });
   }
 
   private reportAudioError(): void {
@@ -267,6 +292,7 @@ export class AudioEngine {
     if (this.stallTimer !== null) return;
     this.stallTimer = window.setTimeout(() => {
       this.stallTimer = null;
+      if (this.sink !== "audio") return;
       if (this.el.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return;
       if (!this.playingReported || this.el.paused) return;
       const atMs = this.el.currentTime * 1000;
@@ -449,6 +475,15 @@ export class AudioEngine {
 
   private onYtState(state: number): void {
     if (this.sink !== "yt") return;
+    if (state === YT_STATE_BUFFERING) {
+      /*
+       * Still working towards playback — re-arm the switch watchdog so a
+       * slow but healthy buffer isn't killed mid-wait, while a genuinely
+       * stuck player still fails after SWITCH_TIMEOUT_MS of silence.
+       */
+      this.armWatchdog();
+      return;
+    }
     if (state === YT_STATE_PLAYING) {
       /* Echo guard, other direction: YouTube audible → mute the fallback. */
       if (!this.el.paused) this.el.pause();
