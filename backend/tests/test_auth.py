@@ -119,3 +119,58 @@ def test_google_verify_rejects_bad_tokens(monkeypatch):
     monkeypatch.setenv("ORCA_GOOGLE_CLIENT_ID", "test-client-id")
     assert orca_auth.verify_google_id_token("") is None
     assert orca_auth.verify_google_id_token("not-a-token") is None
+
+
+def test_signed_token_roundtrip_and_rejection(monkeypatch):
+    row = {"id": 7, "name": "Kai", "email": "kai@sea.dev", "avatar": "", "provider": "google"}
+    token = orca_auth.issue_signed_token(row)
+    claims = orca_auth.verify_signed_token(token)
+    assert claims is not None
+    assert claims["uid"] == 7
+    assert claims["email"] == "kai@sea.dev"
+    assert claims["provider"] == "google"
+
+    # Tampered payload / signature / foreign format are all rejected.
+    head, body, sig = token.split(".")
+    assert orca_auth.verify_signed_token(f"{head}.{body}{'0' if sig[0] != '0' else '1'}{sig[1:]}") is None
+    assert orca_auth.verify_signed_token(f"{head}.eyJ1aWQiOjk5fQ.{sig}") is None
+    assert orca_auth.verify_signed_token("random-opaque-token") is None
+    assert orca_auth.verify_signed_token("") is None
+
+
+def test_signed_token_expiry(monkeypatch):
+    row = {"id": 3, "name": "Fin", "email": "fin@sea.dev", "avatar": "", "provider": "password"}
+    token = orca_auth.issue_signed_token(row)
+    monkeypatch.setattr(orca_auth, "TOKEN_TTL_S", 0)
+    expired = orca_auth.issue_signed_token(row)
+    assert orca_auth.verify_signed_token(token) is not None  # unaffected (ttl read at issue)
+    assert orca_auth.verify_signed_token(expired) is None
+
+
+def test_me_works_without_database_token(client):
+    """A signed token must resolve even when the DB has no matching row —
+    this is what keeps sessions alive across ephemeral serverless instances."""
+    r = client.post(
+        "/api/auth/signup",
+        json={
+            "name": "Signed User",
+            "email": "signed@test.dev",
+            "password": "long-enough-pass",
+            "confirmPassword": "long-enough-pass",
+            "agreed": True,
+        },
+    )
+    assert r.status_code == 200
+    token = r.json()["token"]
+    # The signed token must carry everything /api/auth/me needs; no DB row
+    # (fresh serverless instance) may be required. Wipe the token tables to
+    # prove the session resolves from the token payload alone.
+    storage = srv._storage
+    if storage is not None:
+        with storage._connection() as conn:
+            conn.execute("DELETE FROM auth_tokens;")
+            conn.execute("DELETE FROM users;")
+            conn.commit()
+    r2 = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert r2.status_code == 200
+    assert r2.json()["user"]["email"] == "signed@test.dev"

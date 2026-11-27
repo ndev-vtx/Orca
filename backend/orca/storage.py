@@ -137,6 +137,14 @@ class OrcaStorage:
                     );
                     """
                 )
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS revoked_tokens (
+                        token TEXT PRIMARY KEY,
+                        revoked_at REAL NOT NULL
+                    );
+                    """
+                )
 
                 # Schema migrations for existing databases
                 pl_cols = {
@@ -553,6 +561,22 @@ class OrcaStorage:
         if not row or row["created_at"] < cutoff:
             return None
         return int(row["user_id"])
+
+    def revoke_token(self, token: str) -> None:
+        """Best-effort server-side revocation (per instance on ephemeral hosts)."""
+        with self._connection() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO revoked_tokens (token, revoked_at) VALUES (?, ?);",
+                (token, time.time()),
+            )
+            conn.commit()
+
+    def is_token_revoked(self, token: str) -> bool:
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM revoked_tokens WHERE token = ?;", (token,)
+            ).fetchone()
+        return row is not None
 
     def delete_token(self, token: str) -> None:
         with self._connection() as conn:

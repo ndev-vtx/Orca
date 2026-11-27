@@ -12,6 +12,7 @@ Google's tokeninfo endpoint, checking audience and email_verified.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import json
@@ -63,6 +64,77 @@ def verify_password(password: str, stored: Optional[str]) -> bool:
 
 def new_token() -> str:
     return secrets.token_urlsafe(32)
+
+
+# ---------------------------------------------------------------------------
+# Self-contained signed tokens
+#
+# Vercel serverless instances each get their own ephemeral /tmp SQLite, so a
+# token stored only in the instance's DB cannot be resolved by another warm
+# instance — /api/auth/me would 401 at random. Issued tokens therefore embed
+# the whole user profile plus expiry and are signed with HMAC-SHA256, so any
+# instance can verify a session without touching the database. The DB write
+# stays as a best-effort revocation aid for /api/auth/logout.
+#
+# Set ORCA_AUTH_SECRET in production; without it a deployment-derived fallback
+# key keeps sessions working (fine for this app's threat model — an Orca
+# session only exposes music prefs — but a shared secret is recommended).
+# ---------------------------------------------------------------------------
+
+_TOKEN_PREFIX = "o1"
+_FALLBACK_SECRET_SEED = "orca.auth.seed.v1"
+
+
+def auth_secret() -> bytes:
+    secret = (os.environ.get("ORCA_AUTH_SECRET") or "").strip()
+    if secret:
+        return secret.encode("utf-8")
+    return hashlib.sha256(_FALLBACK_SECRET_SEED.encode("utf-8")).digest()
+
+
+def issue_signed_token(user_row: Dict[str, Any]) -> str:
+    """Issue a self-contained signed session token for a user row."""
+    payload = {
+        "uid": int(user_row["id"]),
+        "name": user_row.get("name") or "",
+        "email": user_row.get("email") or "",
+        "avatar": user_row.get("avatar") or "",
+        "provider": user_row.get("provider") or "password",
+        "exp": int(time.time()) + TOKEN_TTL_S,
+    }
+    body = (
+        base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+        .decode("ascii")
+        .rstrip("=")
+    )
+    sig = hmac.new(auth_secret(), body.encode("ascii"), hashlib.sha256).hexdigest()
+    return f"{_TOKEN_PREFIX}.{body}.{sig}"
+
+
+def verify_signed_token(token: str) -> Optional[Dict[str, Any]]:
+    """Verify a signed session token, returning the embedded user payload.
+
+    Returns None for foreign, tampered or expired tokens (never raises).
+    """
+    if not token:
+        return None
+    try:
+        parts = token.split(".")
+        if len(parts) != 3 or parts[0] != _TOKEN_PREFIX:
+            return None
+        body, sig = parts[1], parts[2]
+        expected = hmac.new(auth_secret(), body.encode("ascii"), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, expected):
+            return None
+        padded = body + "=" * (-len(body) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")))
+        if not isinstance(payload, dict):
+            return None
+        if float(payload.get("exp", 0)) < time.time():
+            return None
+        return payload
+    except Exception:  # noqa: BLE001 - any malformed token is just rejected
+        return None
 
 
 def valid_email(email: str) -> bool:

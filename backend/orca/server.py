@@ -271,10 +271,25 @@ def create_app() -> FastAPI:
         return None
 
     def current_user(request: Request, storage: OrcaStorage) -> Optional[Dict[str, Any]]:
-        """Resolve the signed-in user from the Authorization header."""
+        """Resolve the signed-in user from the Authorization header.
+
+        Issued tokens are self-contained and HMAC-signed, so they verify on
+        any instance without a DB hit (Vercel's per-instance /tmp SQLite
+        makes DB-backed sessions unreliable). The DB lookup stays as a
+        fallback for tokens recorded there.
+        """
         token = bearer_token(request)
         if not token:
             return None
+        claims = orca_auth.verify_signed_token(token)
+        if claims and not storage.is_token_revoked(token):
+            return {
+                "id": claims.get("uid"),
+                "name": claims.get("name") or "",
+                "email": claims.get("email") or "",
+                "avatar": claims.get("avatar") or "",
+                "provider": claims.get("provider") or "password",
+            }
         user_id = storage.user_id_for_token(token)
         if user_id is None:
             return None
@@ -311,7 +326,7 @@ def create_app() -> FastAPI:
         )
         if row is None:
             raise HTTPException(status_code=409, detail="an account with that email already exists")
-        token = orca_auth.new_token()
+        token = orca_auth.issue_signed_token(row)
         storage.save_token(token, row["id"])
         return AuthResponse(token=token, user=user_dto(row))
 
@@ -322,7 +337,7 @@ def create_app() -> FastAPI:
         row = storage.get_user_by_email(payload.email)
         if not row or not orca_auth.verify_password(payload.password, row.get("password_hash")):
             raise HTTPException(status_code=401, detail="email or password is incorrect")
-        token = orca_auth.new_token()
+        token = orca_auth.issue_signed_token(row)
         storage.save_token(token, row["id"])
         return AuthResponse(token=token, user=user_dto(row))
 
@@ -346,7 +361,7 @@ def create_app() -> FastAPI:
             row = storage.get_user(row["id"])
         if row is None:
             raise HTTPException(status_code=500, detail="account could not be created")
-        token = orca_auth.new_token()
+        token = orca_auth.issue_signed_token(row)
         storage.save_token(token, row["id"])
         return AuthResponse(token=token, user=user_dto(row))
 
@@ -366,6 +381,7 @@ def create_app() -> FastAPI:
         token = bearer_token(request)
         if token:
             storage.delete_token(token)
+            storage.revoke_token(token)
         return {"ok": True}
 
     # ------------------------------------------------------------- catalog
