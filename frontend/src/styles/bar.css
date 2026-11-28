@@ -148,6 +148,9 @@
   background: var(--orca-surface-hover);
   cursor: pointer;
   transition: height 120ms ease;
+  /* Let pointerdown/move drive scrubbing on touch screens (iOS Safari
+   * otherwise hijacks the gesture for scrolling). */
+  touch-action: none;
 }
 
 .bar__volume {

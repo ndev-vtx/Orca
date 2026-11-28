@@ -28,6 +28,16 @@ import {
 export const STALL_RECOVER_MS = 9000;
 export const RESUME_POSITION_MS = 3000;
 
+/*
+ * iOS Safari frequently refuses to start (and to seek inside) media that
+ * lives in an invisible / fully offscreen iframe. On iOS the YouTube player
+ * is therefore parked as a 1px, near-transparent element that stays inside
+ * the viewport; every other platform keeps the original offscreen park.
+ */
+const IS_IOS =
+  /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
 export type EngineEvent =
   | { type: "progress"; positionMs: number; durationMs: number }
   | { type: "playing" }
@@ -165,6 +175,13 @@ export class AudioEngine {
   private ytPark: HTMLElement | null = null;
   private ytSurfaceMoved = false;
   private wantPlay = false;
+  /* True while the user asked for playback — lets seek() nudge iOS back to
+   * playing after a seek on a paused player instead of staying silent. */
+  private userWantsPlayback = false;
+  /* Resume position waiting to be re-issued on the first PLAYING tick (iOS
+   * can silently drop a seekTo fired while the player is still loading). */
+  private pendingResumeMs = 0;
+  private primed = false;
 
   constructor() {
     this.el = new Audio();
@@ -412,11 +429,21 @@ export class AudioEngine {
           if (!this.ytPark) {
             const park = document.createElement("div");
             park.style.position = "fixed";
-            park.style.left = "-9999px";
-            park.style.top = "0";
-            park.style.width = "320px";
-            park.style.height = "180px";
-            park.style.opacity = "0";
+            if (IS_IOS) {
+              /* In-viewport 1px park — iOS won't play fully hidden iframes. */
+              park.style.bottom = "0";
+              park.style.left = "0";
+              park.style.width = "1px";
+              park.style.height = "1px";
+              park.style.opacity = "0.01";
+              park.style.zIndex = "-1";
+            } else {
+              park.style.left = "-9999px";
+              park.style.top = "0";
+              park.style.width = "320px";
+              park.style.height = "180px";
+              park.style.opacity = "0";
+            }
             park.style.pointerEvents = "none";
             document.body.appendChild(park);
             this.ytPark = park;
@@ -488,6 +515,18 @@ export class AudioEngine {
       /* Echo guard, other direction: YouTube audible → mute the fallback. */
       if (!this.el.paused) this.el.pause();
       this.wantPlay = false;
+      /*
+       * iOS (and some Android WebView builds) silently drop a seekTo issued
+       * while the player is still loading — re-issue the saved resume
+       * position on the first PLAYING tick if we did not land there.
+       */
+      if (this.pendingResumeMs > 0 && this.yt) {
+        const atMs = this.yt.getCurrentTime() * 1000;
+        if (Math.abs(atMs - this.pendingResumeMs) > 1500) {
+          this.yt.seekTo(this.pendingResumeMs / 1000, true);
+        }
+        this.pendingResumeMs = 0;
+      }
       this.playingReported = true;
       this.evictWatchdog();
       if (!this.ytOpened) {
@@ -521,6 +560,7 @@ export class AudioEngine {
     this.sourceId = sourceId;
     this.sourceUrl = null;
     this.savedPositionMs = resumeAtMs;
+    this.pendingResumeMs = resumeAtMs > RESUME_POSITION_MS ? resumeAtMs : 0;
     this.armWatchdog();
     this.armProgressTimer();
     this.ensureYtPlayer()
@@ -552,6 +592,7 @@ export class AudioEngine {
     this.sourceId = sourceId;
     this.sourceUrl = url;
     this.savedPositionMs = resumeAtMs;
+    this.pendingResumeMs = 0;
     this.generation += 1;
     this.playingReported = false;
     this.evictWatchdog();
@@ -565,19 +606,43 @@ export class AudioEngine {
 
   resumeAt(url: string, sourceId: string, resumeAtMs: number): void {
     this.load(url, sourceId, resumeAtMs);
-    void this.el
-      .play()
-      .then(() => {
-        if (resumeAtMs > RESUME_POSITION_MS) {
-          this.el.currentTime = resumeAtMs / 1000;
-        }
-      })
-      .catch(() => undefined);
+    if (resumeAtMs <= RESUME_POSITION_MS) return;
+    /*
+     * Setting currentTime before the metadata is ready throws (or is
+     * silently ignored) on iOS — wait for loadedmetadata when needed.
+     */
+    const apply = (): void => {
+      if (this.sink !== "audio" || this.sourceId !== sourceId) return;
+      try {
+        this.el.currentTime = resumeAtMs / 1000;
+      } catch {
+        /* stream not seekable (yet) — start from the top */
+      }
+    };
+    if (this.el.readyState >= 1) apply();
+    else this.el.addEventListener("loadedmetadata", apply, { once: true });
   }
 
   /* ---------------------------------------------- shared controls ------ */
 
+  /*
+   * iOS only allows play() calls that can be traced back to a user gesture.
+   * Pre-create the YouTube player on the first tap anywhere so the first real
+   * play request runs against an already-ready player inside the gesture's
+   * call stack instead of after an async API bootstrap.
+   */
+  primeOnGesture(): void {
+    if (this.primed) return;
+    this.primed = true;
+    const unlock = (): void => {
+      void this.ensureYtPlayer().catch(() => undefined);
+    };
+    window.addEventListener("pointerdown", unlock, { once: true });
+    window.addEventListener("touchstart", unlock, { once: true, passive: true });
+  }
+
   playCurrent(): void {
+    this.userWantsPlayback = true;
     if (this.sink === "yt") {
       if (this.yt && this.ytReady) {
         this.yt.playVideo();
@@ -607,6 +672,7 @@ export class AudioEngine {
   }
 
   pause(): void {
+    this.userWantsPlayback = false;
     if (this.sink === "yt") {
       if (this.yt && this.ytReady) this.yt.pauseVideo();
       return;
@@ -618,6 +684,8 @@ export class AudioEngine {
     this.evictWatchdog();
     this.clearStallTimer();
     this.evictProgressTimer();
+    this.userWantsPlayback = false;
+    this.pendingResumeMs = 0;
     if (this.yt && this.ytReady) this.yt.stopVideo();
     this.el.pause();
     this.el.removeAttribute("src");
@@ -632,6 +700,13 @@ export class AudioEngine {
       const duration = this.yt.getDuration() * 1000 || 0;
       const target = Math.max(0, duration ? Math.min(positionMs, duration - 250) : positionMs);
       this.yt.seekTo(target / 1000, true);
+      /*
+       * iOS ignores seeks on a paused player — if the user asked for
+       * playback, nudge the player back to playing after the seek.
+       */
+      if (this.userWantsPlayback && this.yt.getPlayerState() !== YT_STATE_PLAYING) {
+        this.yt.playVideo();
+      }
       this.emit({ type: "progress", positionMs: target, durationMs: duration });
       return;
     }

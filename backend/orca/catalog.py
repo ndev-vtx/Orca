@@ -326,6 +326,31 @@ class CatalogSource:
         if not video_id:
             return {}
 
+        def _fallback() -> Dict[str, Any]:
+            """
+            Minimal, still-playable detail for a track whose metadata could
+            not be fetched at all (bot flag, network failure, unexpected
+            payload). The IFrame player streams it fine — the page must open
+            instead of erroring.
+            """
+            return {
+                "videoId": video_id,
+                "title": "Unknown track",
+                "artist": "Unknown artist",
+                "duration": "",
+                "artworkUrl": f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
+                "album": "",
+                "albumId": "",
+                "year": "",
+                "credits": {"channel": "", "source": "YouTube Music"},
+                "song": Song(
+                    video_id=video_id,
+                    title="Unknown track",
+                    artist="Unknown artist",
+                    artwork_url=f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
+                ),
+            }
+
         def _do_track() -> Dict[str, Any]:
             return self.api.get_song(video_id)
 
@@ -338,9 +363,9 @@ class CatalogSource:
             )
         except Exception as exc:
             log.warning("track lookup failed for %s: %s", video_id, exc)
-            return {}
+            return _fallback()
         if not isinstance(data, dict):
-            return {}
+            return _fallback()
 
         details = data.get("videoDetails") if isinstance(data.get("videoDetails"), dict) else data
         title = html.unescape(str(details.get("title") or "")).strip()
@@ -355,6 +380,22 @@ class CatalogSource:
         song = self._build(item, duration_key="duration")
         if song is not None and duration:
             song.duration = duration
+        if song is None:
+            """
+            YouTube bot-flagged this lookup (playabilityStatus LOGIN_REQUIRED,
+            no videoDetails) or _build rejected the payload — still hand back
+            a usable track so the track page opens and plays instead of
+            rendering an error. Playback itself goes through the IFrame
+            player, which is unaffected by the bot flag.
+            """
+            song = Song(
+                video_id=video_id,
+                title=title or "Unknown track",
+                artist=author or "Unknown artist",
+                duration=duration,
+                artwork_url=_artwork_url(details)
+                or f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
+            )
 
         album = details.get("album")
         album_name = ""

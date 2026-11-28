@@ -57,7 +57,25 @@ export default function TrackPage() {
   const lineRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const lyricsBodyRef = useRef<HTMLDivElement | null>(null);
 
-  const song: SongDto | null = detail?.song ?? null;
+  /*
+   * The backend can be bot-flagged for a specific video (get_song returns no
+   * videoDetails) and then ships song: null. The IFrame player does not care
+   * about that flag, so synthesize a playable SongDto from the detail shell
+   * instead of rendering nothing — the track page always opens.
+   */
+  const song: SongDto | null =
+    detail?.song ??
+    (detail
+      ? {
+          videoId: detail.videoId || videoId || "",
+          title: detail.title || "Unknown track",
+          artist: detail.artist ?? "",
+          duration: detail.duration ?? "",
+          artworkUrl: detail.artworkUrl ?? "",
+          album: detail.album ?? "",
+          type: "song",
+        }
+      : null);
   const isCurrent = Boolean(current && song && current.videoId === song.videoId);
   const saved = song ? savedIds.has(song.videoId) : false;
 

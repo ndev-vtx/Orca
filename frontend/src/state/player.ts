@@ -790,3 +790,10 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
   };
 });
 
+
+/*
+ * iOS only grants playback to calls traceable to a user gesture: pre-create
+ * the YouTube player on the first tap so the first play request is not an
+ * async bootstrap away from the gesture that started it.
+ */
+audioEngine.primeOnGesture();
