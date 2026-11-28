@@ -615,7 +615,11 @@ class CatalogSource:
             ("new", "japan"): "jpop new releases this week",
         }
         query = queries.get((chart, region)) or queries.get((chart, "global")) or queries.get(("hot100", "global"), "top hits this week")
-        return self.search(query, limit=limit)  # search() already junk-cleans
+        # Billboard shelves are track lists: keep songs/videos only so mixed
+        # search results cannot leak playlists/artists (e.g. "Personalized
+        # Radio") into the chart. search() already junk-cleans.
+        tracks = self.search(query, limit=limit)
+        return [t for t in tracks if (t.type or "song") in ("song", "video")] or tracks
 
     def top_artists(self, country: str = "IN") -> List[Song]:
         try:
