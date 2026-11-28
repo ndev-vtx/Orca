@@ -8,7 +8,12 @@
  *
  * The original <audio> sink is kept as the fallback for URLs resolved
  * elsewhere (the Orca backend in local setups, the proxy relay, browser-side
- * public mirrors). This is the web translation of the Orca desktop player
+ * public mirrors). On Android (Capacitor APK) a third sink — NATIVE — hands
+ * the resolved direct stream URL to the Media3/ExoPlayer inside the
+ * foreground MediaPlaybackService: WebView/iframe audio gets suspended by
+ * Android when the screen locks, the native player does not. Native-first
+ * with a short fuse: if a direct stream cannot start quickly, the IFrame
+ * sink takes over instantly. This is the web translation of the Orca desktop player
  * plumbing:
  *
  *   - a switch watchdog so a source that never opens fails after
@@ -24,9 +29,24 @@ import {
   SEEK_MS_BACKSTEP,
   SWITCH_TIMEOUT_MS,
 } from "../state/players";
+import { api } from "./api";
+import {
+  isNativeAudioAvailable,
+  nativeAudioLoad,
+  nativeAudioPause,
+  nativeAudioPlay,
+  nativeAudioSeek,
+  nativeAudioStop,
+  nativeAudioVolume,
+  onNativeAudioEvent,
+  type NativeAudioEvent,
+} from "./nativeAudio";
 
 export const STALL_RECOVER_MS = 9000;
 export const RESUME_POSITION_MS = 3000;
+/* How long the native (ExoPlayer) sink may take to actually start sounding
+ * before the IFrame sink takes over for the current track. */
+const NATIVE_FUSE_MS = 7000;
 
 /*
  * iOS Safari frequently refuses to start (and to seek inside) media that
@@ -163,7 +183,14 @@ export class AudioEngine {
   private generation = 0;
   private playingReported = false;
 
-  private sink: "yt" | "audio" = "yt";
+  private sink: "yt" | "audio" | "native" = "yt";
+  /* Native sink state, mirrored from "orcaaudio" service events. */
+  private nativePosMs = 0;
+  private nativeDurMs = 0;
+  private nativePlaying = false;
+  /* Fuse for the native-first attempt: if no direct stream starts playing
+     within NATIVE_FUSE_MS, the IFrame sink takes over for this track. */
+  private nativeFuse: number | null = null;
 
   private yt: YtPlayer | null = null;
   private ytReady = false;
@@ -196,6 +223,63 @@ export class AudioEngine {
     this.el = new Audio();
     this.el.preload = "auto";
     this.wireAudio();
+    this.wireNativeAudio();
+  }
+
+  /*
+   * Map "orcaaudio" service events onto the shared EngineEvent surface.
+   * Gated on sink === "native" (echo guard) so state from a stale native
+   * stream can never leak while the IFrame or <audio> sink is live.
+   */
+  private wireNativeAudio(): void {
+    onNativeAudioEvent((event: NativeAudioEvent) => {
+      if (this.sink !== "native") return;
+      this.nativePosMs = event.positionMs;
+      this.nativeDurMs = event.durationMs;
+      switch (event.state) {
+        case "playing":
+          this.nativePlaying = true;
+          this.evictWatchdog();
+          this.clearNativeFuse();
+          if (!this.playingReported) {
+            this.playingReported = true;
+            this.userWantsPlayback = true;
+          }
+          this.emit({ type: "playing" });
+          break;
+        case "paused":
+          this.nativePlaying = false;
+          this.emit({ type: "paused" });
+          break;
+        case "ended": {
+          this.nativePlaying = false;
+          const sourceId = this.sourceId;
+          this.evictSource();
+          this.emit({ type: "ended", sourceId });
+          break;
+        }
+        case "buffering":
+          /* progress events carry the position — nothing else to do */
+          break;
+        case "error":
+          this.nativePlaying = false;
+          this.emit({
+            type: "error",
+            sourceId: this.sourceId,
+            message: event.message || "the native audio stream failed",
+            signedUrlDead: isSignedUrlDeath(event.message || ""),
+            atMs: event.positionMs,
+          });
+          break;
+      }
+    });
+  }
+
+  private clearNativeFuse(): void {
+    if (this.nativeFuse !== null) {
+      window.clearTimeout(this.nativeFuse);
+      this.nativeFuse = null;
+    }
   }
 
   subscribe(listener: (event: EngineEvent) => void): () => void {
@@ -400,6 +484,9 @@ export class AudioEngine {
     this.ytVolume = effective;
     this.ytMuted = muted;
     this.el.volume = Math.max(0, Math.min(1, effective / 100.0));
+    if (this.sink === "native" || isNativeAudioAvailable()) {
+      nativeAudioVolume(effective / 100.0);
+    }
     if (this.yt && this.ytReady) {
       this.yt.setVolume(effective);
       if (muted) this.yt.mute();
@@ -559,7 +646,6 @@ export class AudioEngine {
   }
 
   loadTrack(videoId: string, sourceId: string, resumeAtMs: number): void {
-    this.sink = "yt";
     this.el.pause();
     this.el.removeAttribute("src");
     this.el.load();
@@ -577,6 +663,68 @@ export class AudioEngine {
     this.savedPositionMs = resumeAtMs;
     this.pendingResumeMs = resumeAtMs > RESUME_POSITION_MS ? resumeAtMs : 0;
     this.armWatchdog();
+    /*
+     * NATIVE SINK (Android APK): resolve a direct stream URL and play it in
+     * the foreground service's ExoPlayer — the only path that survives
+     * screen lock with 100% reliability. A resolve call can be slow (mirror
+     * ladder), so a 7s fuse guards the attempt: if no native audio has
+     * started by then, the IFrame sink loads the same track instantly.
+     */
+    if (isNativeAudioAvailable()) {
+      this.sink = "native";
+      this.nativePosMs = 0;
+      this.nativeDurMs = 0;
+      this.nativePlaying = false;
+      if (this.yt && this.ytReady) this.yt.stopVideo();
+      this.clearNativeFuse();
+      this.nativeFuse = window.setTimeout(() => {
+        this.nativeFuse = null;
+        if (this.sink !== "native" || this.nativePlaying || this.sourceId !== sourceId) return;
+        if (token !== this.loadToken) return;
+        /* Fuse expired — instant IFrame fallback for this track. */
+        this.sink = "yt";
+        this.ensureYtPlayer()
+          .then((player) => {
+            if (token !== this.loadToken || this.sink !== "yt" || this.sourceId !== sourceId) return;
+            player.loadVideoById(videoId);
+            if (resumeAtMs > RESUME_POSITION_MS) player.seekTo(resumeAtMs / 1000, true);
+          })
+          .catch(() => undefined);
+      }, NATIVE_FUSE_MS);
+      void api
+        .resolveStream(videoId)
+        .then((res) => {
+          if (token !== this.loadToken || this.sink !== "native" || this.sourceId !== sourceId) return;
+          if (res.error || !res.url) {
+            /* No stream — drop the fuse and fall through to the IFrame. */
+            this.clearNativeFuse();
+            this.sink = "yt";
+            this.ensureYtPlayer()
+              .then((player) => {
+                if (token !== this.loadToken || this.sink !== "yt" || this.sourceId !== sourceId) return;
+                player.loadVideoById(videoId);
+                if (resumeAtMs > RESUME_POSITION_MS) player.seekTo(resumeAtMs / 1000, true);
+              })
+              .catch(() => undefined);
+            return;
+          }
+          nativeAudioLoad(res.url, resumeAtMs);
+        })
+        .catch(() => {
+          if (token !== this.loadToken || this.sink !== "native" || this.sourceId !== sourceId) return;
+          this.clearNativeFuse();
+          this.sink = "yt";
+          this.ensureYtPlayer()
+            .then((player) => {
+              if (token !== this.loadToken || this.sink !== "yt" || this.sourceId !== sourceId) return;
+              player.loadVideoById(videoId);
+              if (resumeAtMs > RESUME_POSITION_MS) player.seekTo(resumeAtMs / 1000, true);
+            })
+            .catch(() => undefined);
+        });
+      return;
+    }
+    this.sink = "yt";
     this.armProgressTimer();
     this.ensureYtPlayer()
       .then((player) => {
@@ -658,6 +806,10 @@ export class AudioEngine {
 
   playCurrent(): void {
     this.userWantsPlayback = true;
+    if (this.sink === "native") {
+      nativeAudioPlay();
+      return;
+    }
     if (this.sink === "yt") {
       if (this.yt && this.ytReady) {
         this.yt.playVideo();
@@ -694,6 +846,10 @@ export class AudioEngine {
      * player became ready — onReady must not start it afterwards.
      */
     this.wantPlay = false;
+    if (this.sink === "native") {
+      nativeAudioPause();
+      return;
+    }
     if (this.sink === "yt") {
       if (this.yt && this.ytReady) this.yt.pauseVideo();
       return;
@@ -705,8 +861,11 @@ export class AudioEngine {
     this.evictWatchdog();
     this.clearStallTimer();
     this.evictProgressTimer();
+    this.clearNativeFuse();
     this.userWantsPlayback = false;
     this.pendingResumeMs = 0;
+    this.nativePlaying = false;
+    if (this.sink === "native") nativeAudioStop();
     if (this.yt && this.ytReady) this.yt.stopVideo();
     this.el.pause();
     this.el.removeAttribute("src");
@@ -716,6 +875,14 @@ export class AudioEngine {
   }
 
   seek(positionMs: number): void {
+    if (this.sink === "native") {
+      const duration = this.nativeDurMs;
+      const target = Math.max(0, duration ? Math.min(positionMs, duration - 250) : positionMs);
+      nativeAudioSeek(target);
+      this.nativePosMs = target;
+      this.emit({ type: "progress", positionMs: target, durationMs: duration });
+      return;
+    }
     if (this.sink === "yt") {
       if (!this.yt || !this.ytReady) return;
       const duration = this.yt.getDuration() * 1000 || 0;
@@ -738,6 +905,7 @@ export class AudioEngine {
   }
 
   positionMs(): number {
+    if (this.sink === "native") return this.nativePosMs;
     if (this.sink === "yt") {
       if (!this.yt || !this.ytReady) return 0;
       return this.yt.getCurrentTime() * 1000;
@@ -746,6 +914,7 @@ export class AudioEngine {
   }
 
   isPlaying(): boolean {
+    if (this.sink === "native") return this.nativePlaying;
     if (this.sink === "yt") {
       if (!this.yt || !this.ytReady) return false;
       return this.yt.getPlayerState() === YT_STATE_PLAYING;

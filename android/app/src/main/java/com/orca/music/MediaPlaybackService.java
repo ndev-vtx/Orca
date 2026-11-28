@@ -34,6 +34,17 @@ import android.support.v4.media.session.PlaybackStateCompat;
 
 import androidx.core.app.NotificationCompat;
 
+import android.net.Uri;
+import android.os.Handler;
+import android.os.Looper;
+
+import androidx.media3.common.AudioAttributes;
+import androidx.media3.common.C;
+import androidx.media3.common.MediaItem;
+import androidx.media3.common.PlaybackException;
+import androidx.media3.common.Player;
+import androidx.media3.exoplayer.ExoPlayer;
+
 public class MediaPlaybackService extends Service {
 
     public static final String CHANNEL_ID = "orca_playback";
@@ -42,6 +53,9 @@ public class MediaPlaybackService extends Service {
     public static final String ACTION_PLAYPAUSE = "com.orca.music.MEDIA_PLAYPAUSE";
     public static final String ACTION_NEXT = "com.orca.music.MEDIA_NEXT";
     public static final String ACTION_PREV = "com.orca.music.MEDIA_PREV";
+    public static final String ACTION_NATIVE_LOAD = "com.orca.music.NATIVE_LOAD";
+    public static final String ACTION_NATIVE_PLAY = "com.orca.music.NATIVE_PLAY";
+    public static final String ACTION_NATIVE_PAUSE = "com.orca.music.NATIVE_PAUSE";
 
     /** Web-command relay, installed by OrcaMediaPlugin (bridge -> window event). */
     public interface Emitter {
@@ -61,6 +75,18 @@ public class MediaPlaybackService extends Service {
     private String title = "Orca";
     private String artist = "";
     private String playing = "false";
+
+    /*
+     * Native audio sink (Media3 / ExoPlayer). When the web layer hands the
+     * service a direct stream URL, playback runs HERE — inside the foreground
+     * service — so Android cannot suspend it when the screen locks or the app
+     * is backgrounded (WebView/iframe audio gets suspended; this does not).
+     * Position/duration/state stream back to the web UI as "orcaaudio"
+     * window events relayed by OrcaMediaPlugin.
+     */
+    private ExoPlayer player;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private boolean progressTicking = false;
 
     @Override
     public void onCreate() {
@@ -85,16 +111,35 @@ public class MediaPlaybackService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent != null ? intent.getAction() : null;
-        if (ACTION_PLAYPAUSE.equals(action)) {
-            emitCommand("playpause");
+        if (ACTION_PLAYPAUSE.equals(action)
+                || ACTION_NEXT.equals(action)
+                || ACTION_PREV.equals(action)) {
+            /* A started-foreground service must call startForeground promptly
+               on every startForegroundService() — even command-only relaunches. */
+            if (session != null) startAsForeground();
+            if (ACTION_NEXT.equals(action)) emitCommand("next");
+            else if (ACTION_PREV.equals(action)) emitCommand("prev");
+            else emitCommand("playpause");
             return START_STICKY;
         }
-        if (ACTION_NEXT.equals(action)) {
-            emitCommand("next");
+
+        /* Native-sink control actions (ExoPlayer inside this service). */
+        if (ACTION_NATIVE_LOAD.equals(action)) {
+            String url = intent.getStringExtra("url");
+            long resumeMs = intent.getLongExtra("resumeMs", 0L);
+            if (intent.getStringExtra("title") != null) title = intent.getStringExtra("title");
+            if (intent.getStringExtra("artist") != null) artist = intent.getStringExtra("artist");
+            startAsForeground();
+            nativeLoad(url, resumeMs);
+            if (wakeLock != null && !wakeLock.isHeld()) wakeLock.acquire();
             return START_STICKY;
         }
-        if (ACTION_PREV.equals(action)) {
-            emitCommand("prev");
+        if (ACTION_NATIVE_PLAY.equals(action)) {
+            nativePlay();
+            return START_STICKY;
+        }
+        if (ACTION_NATIVE_PAUSE.equals(action)) {
+            nativePause();
             return START_STICKY;
         }
 
@@ -149,6 +194,132 @@ public class MediaPlaybackService extends Service {
                     | PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS)
             .setState(state, 0, 1f)
             .build());
+    }
+
+    /* --------------------------------------------- native (ExoPlayer) ---- */
+
+    private void ensurePlayer() {
+        if (player != null) return;
+        player = new ExoPlayer.Builder(this)
+            .setAudioAttributes(
+                new AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                    .build(),
+                true /* handle audio focus */)
+            .setHandleAudioBecomingNoisy(true) /* pause on headphone unplug */
+            .setWakeMode(C.WAKE_MODE_NETWORK) /* keep wifi/cpu awake while streaming */
+            .build();
+        player.addListener(new Player.Listener() {
+            @Override public void onIsPlayingChanged(boolean isPlaying) {
+                playing = isPlaying ? "true" : "false";
+                emitAudioState(isPlaying ? "playing" : "paused");
+                updateSession();
+                NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+                if (nm != null) nm.notify(NOTIFICATION_ID, buildNotification());
+                setProgressTicking(isPlaying);
+            }
+
+            @Override public void onPlaybackStateChanged(int state) {
+                if (state == Player.STATE_ENDED) emitAudioState("ended");
+                else if (state == Player.STATE_BUFFERING) emitAudioState("buffering");
+            }
+
+            @Override public void onPlayerError(PlaybackException error) {
+                String msg = error.getMessage() == null ? "native playback error" : error.getMessage();
+                emitAudioMessage("error", msg);
+                setProgressTicking(false);
+            }
+        });
+    }
+
+    /** Hand a direct stream URL to the service's own ExoPlayer. */
+    public void nativeLoad(String url, long resumeMs) {
+        if (url == null || url.isEmpty()) return;
+        ensurePlayer();
+        player.setMediaItem(MediaItem.fromUri(Uri.parse(url)), Math.max(0L, resumeMs));
+        player.prepare();
+        player.setPlayWhenReady(true);
+        playing = "true";
+    }
+
+    public void nativePlay() {
+        if (player != null) player.play();
+    }
+
+    public void nativePause() {
+        if (player != null) player.pause();
+    }
+
+    public void nativeSeek(long positionMs) {
+        if (player != null) player.seekTo(Math.max(0L, positionMs));
+    }
+
+    public void nativeSetVolume(float volume) {
+        if (player != null) player.setVolume(Math.max(0f, Math.min(1f, volume)));
+    }
+
+    /** Full stop: drop the stream and let the process idle (wake lock released by onDestroy caller). */
+    public void nativeStop() {
+        if (player != null) {
+            player.stop();
+            player.clearMediaItems();
+        }
+        setProgressTicking(false);
+    }
+
+    public boolean hasNativeStream() {
+        return player != null && player.getMediaItemCount() > 0;
+    }
+
+    private long nativePosition() {
+        return player == null ? 0L : Math.max(0L, player.getCurrentPosition());
+    }
+
+    private long nativeDuration() {
+        if (player == null) return 0L;
+        long d = player.getDuration();
+        return d < 0 ? 0L : d;
+    }
+
+    private void emitAudioState(String state) {
+        Emitter e = emitter;
+        if (e == null) return;
+        e.emit("{\"kind\":\"audio\",\"state\":\"" + state
+            + "\",\"positionMs\":" + nativePosition()
+            + ",\"durationMs\":" + nativeDuration() + "}");
+    }
+
+    private void emitAudioMessage(String state, String message) {
+        Emitter e = emitter;
+        if (e == null) return;
+        String safe = message.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ");
+        e.emit("{\"kind\":\"audio\",\"state\":\"" + state
+            + "\",\"positionMs\":" + nativePosition()
+            + ",\"durationMs\":" + nativeDuration()
+            + ",\"message\":\"" + safe + "\"}");
+    }
+
+    /* 500ms position ticker while the native sink is playing. */
+    private final Runnable progressTick = new Runnable() {
+        @Override public void run() {
+            if (player == null || !player.isPlaying()) {
+                progressTicking = false;
+                return;
+            }
+            emitAudioState("progress");
+            mainHandler.postDelayed(this, 500);
+        }
+    };
+
+    private void setProgressTicking(boolean running) {
+        if (running && !progressTicking) {
+            progressTicking = true;
+            mainHandler.postDelayed(progressTick, 500);
+        } else if (!running) {
+            progressTicking = false;
+            mainHandler.removeCallbacks(progressTick);
+        }
     }
 
     private Notification buildNotification() {
@@ -206,6 +377,11 @@ public class MediaPlaybackService extends Service {
 
     @Override
     public void onDestroy() {
+        setProgressTicking(false);
+        if (player != null) {
+            player.release();
+            player = null;
+        }
         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
         if (session != null) {
             session.release();
@@ -217,6 +393,11 @@ public class MediaPlaybackService extends Service {
 
     public static boolean isRunning() {
         return instance != null;
+    }
+
+    /** Live instance for same-process direct calls (may be null). */
+    public static MediaPlaybackService running() {
+        return instance;
     }
 
     public static void updateInstance(String title, String artist, String playing) {

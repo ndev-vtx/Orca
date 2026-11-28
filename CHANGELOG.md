@@ -3,6 +3,16 @@
 All notable changes to **Orca** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project adheres to semantic versioning.
 
+## [1.2.6]
+
+### Added
+- **Native audio sink for 100% reliable background playback (Android)**: the APK now hands resolved direct stream URLs to a **Media3/ExoPlayer instance living inside the foreground `MediaPlaybackService`** — audio is decoded in the service process and is immune to WebView suspension when the screen locks or the app is backgrounded. Position/duration/playing/buffering/ended/error events stream back to the web UI over an `orcaaudio` bridge channel and map onto the shared engine event surface (progress bar, seek, media controls all work).
+- **Native-first with a 7s fuse**: if a direct stream cannot start quickly, the YouTube IFrame sink takes over instantly — playback never waits on the resolve ladder.
+- **Battery-optimization exemption prompt**: first-launch flow now sends the user to `Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` so OEM power managers (Samsung/Xiaomi/Oppo/Vivo) don't kill the playback service.
+
+### Fixed
+- WebView keep-alive hardened: desktop Chrome user agent on the WebView (avoids mobile embed restrictions), explicit `onResume()` + `resumeTimers()` on every lifecycle transition, and command-only service relaunches now correctly promote to foreground (no more potential ANR on notification-button cold starts).
+
 ## [1.2.5]
 
 ### Fixed

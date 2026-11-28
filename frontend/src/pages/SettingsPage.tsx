@@ -85,7 +85,7 @@ function readBillboardPref(): BillboardPref {
 }
 
 /* Displayed even before /api/health answers, so the version is never blank. */
-const APP_VERSION = "1.2.5";
+const APP_VERSION = "1.2.6";
 
 export default function SettingsPage() {
   const [pref, setPref] = useState<BillboardPref>(readBillboardPref);

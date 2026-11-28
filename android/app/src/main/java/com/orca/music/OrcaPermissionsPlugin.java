@@ -9,7 +9,12 @@
 package com.orca.music;
 
 import android.Manifest;
+import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Build;
+import android.os.PowerManager;
+import android.provider.Settings;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.PermissionState;
@@ -47,6 +52,38 @@ public class OrcaPermissionsPlugin extends Plugin {
     @PluginMethod
     public void checkMediaPermissions(PluginCall call) {
         resolveState(call);
+    }
+
+    /*
+     * Battery-optimization exemption: aggressive OEM power managers (Samsung,
+     * Xiaomi, Oppo, Vivo...) kill foreground services after a few minutes
+     * with the screen off unless the app is exempted. Sends the user to the
+     * system dialog (Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+     * for this package. Best-effort — some ROMs/OEM skins drop the action.
+     */
+    @PluginMethod
+    public void requestBatteryExemption(PluginCall call) {
+        JSObject ret = new JSObject();
+        Context context = getContext();
+        PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+        if (pm != null && pm.isIgnoringBatteryOptimizations(context.getPackageName())) {
+            ret.put("exempt", true);
+            call.resolve(ret);
+            return;
+        }
+        try {
+            Intent intent = new Intent(
+                Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                Uri.parse("package:" + context.getPackageName()));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(intent);
+            ret.put("exempt", false);
+        } catch (Exception ex) {
+            /* Action unsupported on this ROM — silently skip. */
+            ret.put("exempt", false);
+            ret.put("supported", false);
+        }
+        call.resolve(ret);
     }
 
     @PermissionCallback

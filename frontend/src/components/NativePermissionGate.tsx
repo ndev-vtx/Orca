@@ -15,6 +15,7 @@ const PROMPT_KEY = "orca.native.perms.v1";
 
 interface OrcaPermissionsPlugin {
   requestMediaPermissions?: () => Promise<{ granted?: boolean }>;
+  requestBatteryExemption?: () => Promise<{ exempt?: boolean } | undefined>;
 }
 
 function permissionsPlugin(): OrcaPermissionsPlugin | null {
@@ -55,6 +56,17 @@ export default function NativePermissionGate() {
       await permissionsPlugin()?.requestMediaPermissions?.();
     } catch {
       /* user denied or the bridge is missing — never block the app */
+    }
+    /*
+     * Battery-optimization exemption: OEM power managers (Samsung, Xiaomi,
+     * Oppo, Vivo) kill foreground services after a few minutes with the
+     * screen off. Send the user to the system exemption dialog right after
+     * the notification prompt; best-effort and skippable.
+     */
+    try {
+      await permissionsPlugin()?.requestBatteryExemption?.();
+    } catch {
+      /* ROM dropped the action — never block the app */
     }
     setBusy(false);
     setOpen(false);
