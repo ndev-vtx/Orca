@@ -57,8 +57,9 @@ jobs:
           java-version: 17
           cache: gradle
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # ubuntu-latest ships the Android SDK preinstalled (ANDROID_HOME set,
+      # licenses pre-accepted) — no setup-android action needed, and that
+      # action's sdkmanager license prompt can fail the job.
 
       - name: Install dependencies
         run: |
