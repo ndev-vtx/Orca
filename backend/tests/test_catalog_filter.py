@@ -12,12 +12,20 @@ def song(title: str, duration: str = "3:45") -> Song:
 
 def test_shorts_are_dropped():
     assert _is_junk(song("Shorts Featured Section VN", "0:45"))
+    # "clip" is no longer a title-drop term (M2); this dies on duration alone.
     assert _is_junk(song("funny clip", "1:10"))
 
 
 def test_normal_tracks_survive():
     assert not _is_junk(song("Midnight City", "4:03"))
     assert not _is_junk(song("Remember The Time", "3:59"))
+
+
+def test_clip_in_title_is_not_a_drop_term():
+    """M2: legitimate songs can carry the word — the <90s duration rule
+    already catches actual short clips."""
+    assert not _is_junk(song("Paper Clips", "3:10"))
+    assert not _is_junk(song("Clip My Wings", "4:00"))
 
 
 def test_spam_titles_are_demoted_not_dropped():

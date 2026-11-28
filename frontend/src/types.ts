@@ -82,6 +82,16 @@ export interface AlbumDetail {
   tracks: SongDto[];
 }
 
+export interface ArtistDetail {
+  browseId: string;
+  name: string;
+  description: string;
+  image: string;
+  songs: SongDto[];
+  albums: SongDto[];
+  singles: SongDto[];
+}
+
 export type BillboardChart = "hot100" | "viral" | "new";
 
 export type BillboardRegion = "global" | "us" | "uk" | "vietnam" | "korea" | "japan";

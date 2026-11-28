@@ -17,12 +17,20 @@ interface MediaCardProps {
  * Album AND playlist results arrive with a browse id (MPRE… albums, VL…
  * playlists) in the videoId field — the id is a browse target, not a playable
  * video, so the card opens the album/playlist page instead of trying to play.
+ * Artist results carry a channel browse id (UC…) — same rule, they open the
+ * artist page; feeding a UC… id to the player is guaranteed failure.
  */
 export function isAlbumEntry(song: SongDto): boolean {
   const kind = (song.type ?? "").toLowerCase();
   if (kind === "album" || kind === "albums") return true;
   if (kind === "playlist") return song.videoId.startsWith("MPRE") || song.videoId.startsWith("VL");
   return false;
+}
+
+export function isArtistEntry(song: SongDto): boolean {
+  const kind = (song.type ?? "").toLowerCase();
+  if (kind === "artist" || kind === "artists" || kind === "profiles") return true;
+  return kind !== "song" && kind !== "video" && song.videoId.startsWith("UC");
 }
 
 export default function MediaCard({
@@ -42,6 +50,7 @@ export default function MediaCard({
   const playSong = usePlayerStore((s) => s.playSong);
   const isCurrent = currentId === song.videoId;
   const isAlbum = isAlbumEntry(song);
+  const isArtist = isArtistEntry(song);
 
   const start = () => {
     if (queue && queue.length > 0) {
@@ -54,6 +63,10 @@ export default function MediaCard({
   const open = () => {
     if (isAlbum) {
       navigate(`/album/${encodeURIComponent(song.videoId)}`);
+      return;
+    }
+    if (isArtist) {
+      navigate(`/artist/${encodeURIComponent(song.videoId)}`);
       return;
     }
     navigate(`/track/${encodeURIComponent(song.videoId)}`);
@@ -69,7 +82,7 @@ export default function MediaCard({
       onKeyDown={(e) => {
         if (e.key === "Enter") open();
       }}
-      title={isAlbum ? `Open ${song.title}` : `${song.title} — ${song.artist}`}
+      title={isAlbum ? `Open ${song.title}` : isArtist ? `Open ${song.title}` : `${song.title} — ${song.artist}`}
     >
       <div className={`card__art${roundArt ? " card__art--round" : ""}`}>
         {song.artworkUrl ? (

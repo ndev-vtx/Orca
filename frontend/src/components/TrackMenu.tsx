@@ -86,11 +86,16 @@ export default function TrackMenu() {
         notify("Radio — playing tracks like this one");
       },
     },
-    { label: "Go to artist", hint: resolveArtist(song) || undefined, run: act(() => goSearch(resolveArtist(song) || song.title)) },
+    /*
+     * No artist browse id travels with most track payloads, so the honest
+     * action is an artist search (a real /artist/:id hop happens wherever a
+     * browse id IS known — artist cards in Search results).
+     */
+    { label: "Search artist", hint: resolveArtist(song) || undefined, run: act(() => goSearch(resolveArtist(song) || song.title)) },
     ...(albumId
       ? [{ label: "Go to album", run: act(() => navigate(`/album/${encodeURIComponent(albumId)}`)) }]
       : []),
-    { label: "View credits", run: act(openTrack) },
+    { label: "Open track page", run: act(openTrack) },
     { label: "Share", run: () => void share() },
   ];
 

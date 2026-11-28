@@ -11,6 +11,7 @@ import SearchPage from "./pages/SearchPage";
 import LibraryPage from "./pages/LibraryPage";
 import PlaylistPage from "./pages/PlaylistPage";
 import AlbumPage from "./pages/AlbumPage";
+import ArtistPage from "./pages/ArtistPage";
 import QueuePage from "./pages/QueuePage";
 import SettingsPage from "./pages/SettingsPage";
 import NotFoundPage from "./pages/NotFoundPage";
@@ -120,6 +121,7 @@ export default function App() {
               <Route path="/library" element={<LibraryPage />} />
               <Route path="/playlist/:id" element={<PlaylistPage />} />
               <Route path="/album/:browseId" element={<AlbumPage />} />
+              <Route path="/artist/:browseId" element={<ArtistPage />} />
               <Route path="/track/:videoId" element={<TrackPage />} />
               <Route path="/queue" element={<QueuePage />} />
               <Route path="/settings" element={<SettingsPage />} />

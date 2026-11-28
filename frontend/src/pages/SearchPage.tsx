@@ -6,6 +6,7 @@ import TopBar from "../components/TopBar";
 import MediaCard from "../components/MediaCard";
 import { SearchIcon } from "../components/Icons";
 import { SEARCH_DEBOUNCE_MS } from "../state/players";
+import { useIsMobile } from "../utils/device";
 
 const FILTERS: { id: SearchFilter; label: string }[] = [
   { id: "all", label: "All" },
@@ -16,14 +17,29 @@ const FILTERS: { id: SearchFilter; label: string }[] = [
   { id: "playlists", label: "Playlists" },
 ];
 
+const FILTER_IDS = new Set(FILTERS.map((f) => f.id));
+
 export default function SearchPage() {
   const [params, setParams] = useSearchParams();
   const query = params.get("q") ?? "";
   const [draft, setDraft] = useState(query);
-  const [filter, setFilter] = useState<SearchFilter>("all");
+  /*
+   * The active filter lives in the URL (?filter=albums) so back-navigation
+   * and shared links restore it instead of silently resetting to "All".
+   */
+  const filterParam = params.get("filter") as SearchFilter | null;
+  const filter: SearchFilter = filterParam && FILTER_IDS.has(filterParam) ? filterParam : "all";
   const [results, setResults] = useState<SongDto[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const isMobile = useIsMobile();
+
+  const setFilter = (next: SearchFilter) => {
+    const updated = new URLSearchParams(params);
+    if (next === "all") updated.delete("filter");
+    else updated.set("filter", next);
+    setParams(updated, { replace: true });
+  };
 
   useEffect(() => {
     setDraft(query);
@@ -68,7 +84,7 @@ export default function SearchPage() {
         <div className="searchbar">
           <SearchIcon size={18} />
           <input
-            autoFocus
+            autoFocus={!isMobile}
             placeholder="Songs, artists, albums, or paste a link"
             value={draft}
             onChange={(e) => {

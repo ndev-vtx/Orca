@@ -138,6 +138,8 @@ export default function AuthModal() {
           size: "large",
           shape: "pill",
           text: "continue_with",
+          /* GIS needs a number here; the CSS below clamps the rendered
+             iframe to the modal width on narrow phones (m5). */
           width: 320,
           logo_alignment: "center",
         });

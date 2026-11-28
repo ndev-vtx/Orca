@@ -42,6 +42,16 @@ export const PLAYER_NORMALIZE_KEY = "orca.player.normalize";
 const MAX_QUEUE_SIZE = 200;
 const NOTICE_MS = 2600;
 
+/*
+ * M6: iOS (Safari / PWA) suspends WebKit media when the tab leaves the
+ * foreground - a platform constraint no web app can fully lift. Say it once,
+ * on the first playback, so the behaviour is explained instead of mysterious.
+ */
+const IS_IOS =
+  /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const IOS_HINT_KEY = "orca.ios.background-hint";
+
 function loadInt(key: string, fallback: number, min: number, max: number): number {
   const raw = localStorage.getItem(key);
   const parsed = raw === null ? Number.NaN : Number.parseInt(raw, 10);
@@ -67,6 +77,12 @@ function loadRepeat(): RepeatMode {
  * saved position.
  */
 export const PLAYER_SESSION_KEY = "orca.player.session";
+/*
+ * Deliberately below MAX_QUEUE_SIZE (200): the persisted snapshot is a
+ * recovery convenience, not a full queue mirror — capping it keeps the
+ * localStorage write small on huge radio queues. The live queue is always
+ * the source of truth within a session.
+ */
 const SESSION_QUEUE_CAP = 80;
 const SESSION_SAVE_DEBOUNCE_MS = 2000;
 
@@ -168,7 +184,28 @@ interface PlaybackState {
 let noticeTimer: number | null = null;
 let sessionSaveTimer: number | null = null;
 let engineBound = false;
-const deadTracks = new Set<string>();
+/*
+ * Dead-track bookkeeping with a TTL (C2 fix): a track that failed is only
+ * skipped for DEAD_TTL_MS, not forever. Transient failures (network blip,
+ * bot-flag flake, expired signed URL) recover automatically, and a fresh
+ * play() with a new context clears the ledger entirely.
+ */
+const DEAD_TTL_MS = 5 * 60 * 1000;
+const deadTracks = new Map<string, number>();
+
+function markDead(videoId: string): void {
+  deadTracks.set(videoId, Date.now());
+}
+
+function isDead(videoId: string): boolean {
+  const markedAt = deadTracks.get(videoId);
+  if (markedAt === undefined) return false;
+  if (Date.now() - markedAt > DEAD_TTL_MS) {
+    deadTracks.delete(videoId);
+    return false;
+  }
+  return true;
+}
 let loadedId: string | null = null;
 let switching = false;
 let errorStreak = 0;
@@ -188,6 +225,19 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
       noticeTimer = null;
       set({ notice: "" });
     }, NOTICE_MS);
+  }
+
+  function maybeIosBackgroundHint(): void {
+    if (!IS_IOS) return;
+    try {
+      if (localStorage.getItem(IOS_HINT_KEY) === "1") return;
+      localStorage.setItem(IOS_HINT_KEY, "1");
+    } catch {
+      return; // private mode - skip rather than nag on every track
+    }
+    announce(
+      "iOS tip - background audio may pause when you leave Orca; add it to your Home Screen for the best playback",
+    );
   }
 
   function proxyStreamUrl(song: SongDto): string {
@@ -233,7 +283,7 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
     if (loadedId === song.videoId) switching = false;
     set({ loading: false, lastError: message });
     announce(message);
-    deadTracks.add(song.videoId);
+    markDead(song.videoId);
     if (permanent) return;
     errorStreak += 1;
     if (errorStreak <= MAX_AUTO_SKIP) {
@@ -378,7 +428,6 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
   }
 
   function onEngineEvent(event: EngineEvent): void {
-    const state = get();
     switch (event.type) {
       case "progress": {
         set({ positionMs: event.positionMs, durationMs: event.durationMs });
@@ -400,23 +449,28 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
         }
         break;
       }
-      case "playing":
+      case "playing": {
+        const st = get();
         set({ playing: true, loading: false });
-        if (state.current) reportHistory(state.current, state.context);
+        if (st.current) reportHistory(st.current, st.context);
+        maybeIosBackgroundHint();
         prefetchNextMetadata();
-        nativeMediaUpdate(state.current, true);
+        nativeMediaUpdate(st.current, true);
         if ("mediaSession" in navigator) {
           navigator.mediaSession.playbackState = "playing";
         }
         break;
-      case "paused":
+      }
+      case "paused": {
+        const st = get();
         set({ playing: false });
         persistSession();
-        nativeMediaUpdate(state.current, false);
+        nativeMediaUpdate(st.current, false);
         if ("mediaSession" in navigator) {
           navigator.mediaSession.playbackState = "paused";
         }
         break;
+      }
       case "opened":
         if (!switching) break;
         switching = false;
@@ -550,10 +604,13 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
       audioEngine.subscribe(onEngineEvent);
       wireMediaSession();
       // Flush the queue snapshot when the tab is closed or hidden mid-play.
+      // Named handlers (m3) so the registration is idempotent-and-auditable
+      // rather than an anonymous listener nobody can ever remove.
       window.addEventListener("pagehide", persistSession);
-      document.addEventListener("visibilitychange", () => {
+      const onVisibilityChange = (): void => {
         if (document.visibilityState === "hidden") persistSession();
-      });
+      };
+      document.addEventListener("visibilitychange", onVisibilityChange);
     },
 
     play: (songs, startIndex = 0, context = "manual") => {
@@ -563,6 +620,8 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
       const song = filtered[index];
       radioSeed = null;
       advanceAfterRadio = false;
+      /* Fresh context = fresh chance for previously-failed tracks. */
+      deadTracks.clear();
       set({
         queue: filtered,
         cursor: index,
@@ -695,7 +754,7 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
       const playableFrom = (from: number, to: number, step: number): number | null => {
         for (let i = from; step > 0 ? i < to : i > to; i += step) {
           if (i < 0 || i >= state.queue.length) break;
-          if (!deadTracks.has(state.queue[i].videoId)) return i;
+          if (!isDead(state.queue[i].videoId)) return i;
         }
         return null;
       };
@@ -705,7 +764,7 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
         if (state.shuffle) {
           const candidates: number[] = [];
           for (let i = state.cursor + 1; i < state.queue.length; i += 1) {
-            if (!deadTracks.has(state.queue[i].videoId)) candidates.push(i);
+            if (!isDead(state.queue[i].videoId)) candidates.push(i);
           }
           if (candidates.length > 0) {
             get().playAt(candidates[Math.floor(Math.random() * candidates.length)]);

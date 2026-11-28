@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -308,16 +309,25 @@ def create_app() -> FastAPI:
             return None
         return storage.get_user(user_id)
 
+    # Guests send a random per-browser id (localStorage) so every visitor
+    # gets a private library instead of sharing one 'anon' bucket (M1).
+    _GUEST_ID_RE = re.compile(r"[A-Za-z0-9_-]{8,64}\Z")
+
     def resolve_scope(
         request: Request, storage: OrcaStorage = Depends(deps["storage"])
     ) -> str:
-        """Library data scope: signed-in users get private shelves, guests share 'anon'.
-
-        Same token verification as /api/auth/me, exposed as a FastAPI
-        dependency so every /api/library route can scope its storage calls.
+        """Library data scope: signed-in users get private shelves; guests get
+        a per-browser private scope (X-Orca-Guest header) instead of the
+        shared 'anon' bucket. 'anon' remains the fallback for clients that do
+        not send the header (migration/default).
         """
         user = current_user(request, storage)
-        return f"user:{user['id']}" if user else "anon"
+        if user:
+            return f"user:{user['id']}"
+        guest = (request.headers.get("x-orca-guest") or "").strip()
+        if _GUEST_ID_RE.fullmatch(guest):
+            return f"guest:{guest}"
+        return "anon"
 
     deps["scope"] = resolve_scope
 
@@ -545,11 +555,28 @@ def create_app() -> FastAPI:
         browse_id: str,
         catalog: CatalogSource = Depends(deps["catalog"]),
     ) -> Dict[str, Any]:
+        """Artist profile: name, image, description, songs, albums, singles.
+
+        Song dataclasses are converted to camelCase DTOs here (a raw return
+        would jsonable_encode the dataclasses into snake_case and break the
+        frontend contract).
+        """
         try:
-            return catalog.artist_details(browse_id)
+            data = catalog.artist_details(browse_id)
         except Exception as exc:  # noqa: BLE001
             log.error("artist_details failed for %r: %s", browse_id, exc)
             raise HTTPException(status_code=502, detail="artist lookup failed") from exc
+        if not isinstance(data, dict) or not data:
+            raise HTTPException(status_code=404, detail="artist not found")
+        return {
+            "browseId": browse_id,
+            "name": str(data.get("name") or "Unknown artist"),
+            "description": str(data.get("description") or ""),
+            "image": str(data.get("image") or ""),
+            "songs": _dtos(data.get("songs") or []),
+            "albums": _dtos(data.get("albums") or []),
+            "singles": _dtos(data.get("singles") or []),
+        }
 
     # ------------------------------------------------------------- lyrics
     @app.get("/api/lyrics/{video_id}", response_model=LyricsResponse)

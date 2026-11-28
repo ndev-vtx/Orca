@@ -1,4 +1,5 @@
 import type {
+  ArtistDetail,
   AuthProviders,
   AuthResponse,
   FavoritesResponse,
@@ -38,6 +39,29 @@ function resolveApiBase(): string {
 
 const BASE = resolveApiBase();
 
+/*
+ * Per-browser guest id: every signed-out visitor gets a private library
+ * scope server-side instead of sharing one 'anon' bucket. Random, persisted
+ * in localStorage, sent on every request; ignored while signed in.
+ */
+const GUEST_ID_KEY = "orca.guest.id";
+
+function guestId(): string {
+  try {
+    let id = localStorage.getItem(GUEST_ID_KEY);
+    if (!id) {
+      id =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `g${Date.now()}${Math.random().toString(36).slice(2, 12)}`;
+      localStorage.setItem(GUEST_ID_KEY, id);
+    }
+    return id;
+  } catch {
+    return "";
+  }
+}
+
 export class ApiError extends Error {
   status: number;
 
@@ -49,9 +73,12 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+  const guest = guestId();
+  if (guest) headers.set("X-Orca-Guest", guest);
   let res: Response;
   try {
-    res = await fetch(`${BASE}${path}`, init);
+    res = await fetch(`${BASE}${path}`, { ...init, headers });
   } catch {
     throw new ApiError("Orca backend unreachable", 0);
   }
@@ -125,6 +152,9 @@ export const api = {
     request<SongDto[]>(`/api/similar/${encodeURIComponent(videoId)}`),
   album: (browseId: string) =>
     request<AlbumResponse>(`/api/album/${encodeURIComponent(browseId)}`),
+
+  artist: (browseId: string) =>
+    request<ArtistDetail>(`/api/artist/${encodeURIComponent(browseId)}`),
 
   billboard: (chart: string, region: string) =>
     request<SongDto[]>(`/api/billboard?chart=${encodeURIComponent(chart)}&region=${encodeURIComponent(region)}`),

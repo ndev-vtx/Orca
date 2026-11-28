@@ -992,6 +992,15 @@
   display: flex;
   justify-content: center;
   min-height: 44px;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* GIS renders a fixed-width (320px) button iframe; clamp it on narrow
+   phones so the modal never overflows (m5). */
+.auth__google-host iframe,
+.auth__google-host div[role="button"] {
+  max-width: 100% !important;
 }
 
 .auth__google-disabled {

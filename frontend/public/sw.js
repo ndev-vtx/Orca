@@ -16,6 +16,8 @@
  *     network passthrough — never cached, never intercepted.
  */
 
+/* Bump VERSION whenever SHELL_URLS or the caching strategy changes — the
+   activate handler deletes every cache whose name does not start with it. */
 const VERSION = "orca-v2";
 const SHELL_CACHE = `${VERSION}-shell`;
 const ASSET_CACHE = `${VERSION}-assets`;

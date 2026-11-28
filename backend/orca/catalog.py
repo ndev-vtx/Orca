@@ -33,8 +33,10 @@ _FILTER_ALIASES = {
 # slowed / nightcore spam and montage or remix compilations bury real music.
 # Junk items are dropped outright; spam-pattern titles are demoted below
 # clean results (demoted, never dropped, so genuine remixes stay reachable).
+# NOTE: bare "clip" is deliberately NOT a drop term — legitimate songs carry
+# it ("Paper Clips") and the <90s duration rule already catches real clips.
 _JUNK_TITLE_RE = re.compile(
-    r"\bshorts?\b|\bclips?\b|\btiktok\b|\bmeme\b|\breactions?\b"
+    r"\bshorts?\b|\btiktok\b|\bmeme\b|\breactions?\b"
     r"|status\s*(?:video|song|whatsapp)s?\b"
     r"|\bvlog\b|\bpodcasts?\b|\binterviews?\b",
     re.IGNORECASE,
@@ -602,9 +604,15 @@ class CatalogSource:
             ("viral", "global"): "viral hits top tracks this week",
             ("viral", "vietnam"): "nhac hot trend viet nam",
             ("viral", "us"): "viral hits usa this week",
+            ("viral", "uk"): "viral hits uk this week",
+            ("viral", "korea"): "kpop viral hits this week",
+            ("viral", "japan"): "jpop viral hits this week",
             ("new", "global"): "brand new music this week new releases",
             ("new", "vietnam"): "nhac tre moi nhat trong tuan",
             ("new", "us"): "new music this week new releases",
+            ("new", "uk"): "new uk music this week new releases",
+            ("new", "korea"): "kpop new releases this week",
+            ("new", "japan"): "jpop new releases this week",
         }
         query = queries.get((chart, region)) or queries.get((chart, "global")) or queries.get(("hot100", "global"), "top hits this week")
         return self.search(query, limit=limit)  # search() already junk-cleans

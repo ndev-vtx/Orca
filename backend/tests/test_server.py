@@ -77,6 +77,53 @@ def test_health_reports_orca_branding(client):
     assert body["status"] == "ok"
 
 
+def test_guest_scopes_keep_libraries_private(client):
+    """M1: each browser's guest id gets its own library bucket — a playlist
+    created by guest A is invisible to guest B and to header-less clients."""
+    r = client.post(
+        "/api/library/playlists",
+        json={"name": "Mine", "sourceType": "custom"},
+        headers={"X-Orca-Guest": "guest-aaaaaaaaaaaa"},
+    )
+    assert r.status_code == 200
+
+    other = client.get(
+        "/api/library/playlists", headers={"X-Orca-Guest": "guest-bbbbbbbbbbbb"}
+    )
+    assert other.status_code == 200
+    assert other.json() == []
+
+    anon = client.get("/api/library/playlists")
+    assert anon.status_code == 200
+    assert anon.json() == []
+
+    same = client.get(
+        "/api/library/playlists", headers={"X-Orca-Guest": "guest-aaaaaaaaaaaa"}
+    )
+    assert same.status_code == 200
+    assert [p["name"] for p in same.json()] == ["Mine"]
+
+
+def test_guest_header_is_sanitized(client):
+    """Malicious/oversized guest ids never reach storage as an arbitrary
+    scope key — they fall back to the plain anon scope, i.e. a request with
+    a rejected header behaves exactly like one without any header."""
+    r = client.post(
+        "/api/library/playlists",
+        json={"name": "Bad", "sourceType": "custom"},
+        headers={"X-Orca-Guest": "../etc/passwd; DROP TABLE users"},
+    )
+    assert r.status_code == 200
+    # The rejected id collapsed into anon: a header-less client sees it too.
+    anon = client.get("/api/library/playlists")
+    assert [p["name"] for p in anon.json()] == ["Bad"]
+    # And a well-formed guest id still does NOT see anon rows.
+    other = client.get(
+        "/api/library/playlists", headers={"X-Orca-Guest": "guest-cccccccccccc"}
+    )
+    assert other.json() == []
+
+
 def test_search_returns_song_dtos(client):
     r = client.get("/api/search", params={"q": "lofi", "filter": "songs"})
     assert r.status_code == 200
