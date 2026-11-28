@@ -3,6 +3,24 @@
 All notable changes to **Orca** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project adheres to semantic versioning.
 
+## [1.5.0]
+
+### Added
+- **Artist pages** (`/artist/:browseId`): round portrait hero with the Spotify-style ambient glow, name + description, Popular tracks, and Albums / Singles grids — reached from artist cards in Search, which previously tried to play a channel browse id and failed (now routed to the artist page instead). The backend `/api/artist/{browse_id}` endpoint is wired in and returns proper camelCase DTOs.
+- **Private guest libraries**: every signed-out browser gets its own random scope (`X-Orca-Guest` header → `guest:<id>`) instead of sharing one anonymous favorites/playlists/history bucket; malformed ids are sanitized and signed-in users are unaffected.
+- **Full Billboard region coverage**: all chart/region combinations (Hot 100 / Viral / New × Global / US / UK / Vietnam / Korea / Japan) now have curated queries, and Billboard shelves are track-only (playlist/artist rows can no longer leak into charts).
+
+### Fixed
+- **Dead-track marks expire**: a failed track is skipped for 5 minutes instead of the whole session, and a fresh play clears the ledger — transient failures (network blips, bot-flag flakes) recover automatically.
+- **Junk filter false positive**: bare "clip" in a title no longer drops a song ("Paper Clips" survives); real short clips are still caught by the <90-second duration rule.
+- Track menu labels are honest: "Search artist" and "Open track page" describe what they do.
+- The active search filter persists in the URL (`?filter=albums`), so back-navigation and shared links restore it; mobile no longer pops the keyboard on Search entry.
+- Engine event handling reads fresh state per event case (no stale snapshots), `bindEngine` listeners are named, and the Google button never overflows narrow phones.
+- Storage module annotations reference imported typing names (runtime-safe under any annotation introspection).
+
+### Changed
+- One-time iOS tip on first playback explaining that background audio may pause when leaving the tab (WebKit constraint) with the Add-to-Home-Screen recommendation.
+
 ## [1.2.6]
 
 ### Added
