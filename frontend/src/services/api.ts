@@ -12,8 +12,31 @@ import type {
   TrackDetail,
   UserDto,
 } from "../types";
+import { Capacitor } from "@capacitor/core";
 
-const BASE = import.meta.env.VITE_API_BASE ?? "";
+/*
+ * API base resolution:
+ * 1. VITE_API_BASE wins when set at build time (self-hosted deployments).
+ * 2. Inside the Capacitor Android APK the WebView origin is a local
+ *    https://localhost asset host — relative /api/... paths would return the
+ *    bundled index.html ("Unexpected token '<', "<!doctype "... is not valid
+ *    JSON"), so every request targets the live deployment instead.
+ * 3. Plain browser deployments use relative paths (same-origin, no CORS).
+ */
+const NATIVE_API_BASE = "https://orca-d.vercel.app";
+
+function resolveApiBase(): string {
+  const envBase = (import.meta.env.VITE_API_BASE as string | undefined)?.trim();
+  if (envBase) return envBase.replace(/\/+$/, "");
+  try {
+    if (Capacitor.isNativePlatform()) return NATIVE_API_BASE;
+  } catch {
+    /* not running inside Capacitor */
+  }
+  return "";
+}
+
+const BASE = resolveApiBase();
 
 export class ApiError extends Error {
   status: number;

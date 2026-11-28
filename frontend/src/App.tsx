@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 import { BrowserRouter, Route, Routes, useNavigate } from "react-router-dom";
+import { Capacitor } from "@capacitor/core";
+import { App as CapApp } from "@capacitor/app";
 import Sidebar from "./components/Sidebar";
 import NowPlayingBar from "./components/NowPlayingBar";
 import LyricsPanel from "./components/LyricsPanel";
@@ -13,6 +15,7 @@ import QueuePage from "./pages/QueuePage";
 import SettingsPage from "./pages/SettingsPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import TrackPage from "./pages/TrackPage";
+import AuthBridgePage from "./pages/AuthBridgePage";
 import AuthModal from "./components/AuthModal";
 import TrackMenu from "./components/TrackMenu";
 import PlaylistPickerModal from "./components/PlaylistPickerModal";
@@ -40,6 +43,7 @@ export default function App() {
   const loadLibrary = useLibraryStore((s) => s.loadLibrary);
   const bindEngine = usePlayerStore((s) => s.bindEngine);
   const bootstrapAuth = useAuthStore((s) => s.bootstrap);
+  const signInWithToken = useAuthStore((s) => s.signInWithToken);
   const isMobile = useIsMobile();
   useKeyboardShortcuts();
 
@@ -54,6 +58,36 @@ export default function App() {
     // still created inside the first user gesture (primeOnGesture).
     prewarmYouTubeApi();
   }, [loadLibrary, bindEngine, bootstrapAuth]);
+
+  /*
+   * Android APK: Google sign-in happens in the system browser (Google blocks
+   * OAuth inside WebViews) and returns via the orca://auth?token=... deep
+   * link. Capture both warm returns (appUrlOpen) and cold starts
+   * (getLaunchUrl) and complete the session.
+   */
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const complete = (url: string): void => {
+      try {
+        const parsed = new URL(url);
+        if (parsed.protocol !== "orca:" || parsed.host !== "auth") return;
+        const token = parsed.searchParams.get("token");
+        if (token) void signInWithToken(token);
+      } catch {
+        /* malformed deep link */
+      }
+    };
+    let handle: { remove: () => Promise<void> } | null = null;
+    void CapApp.addListener("appUrlOpen", ({ url }) => complete(url)).then((h) => {
+      handle = h;
+    });
+    void CapApp.getLaunchUrl().then((launch) => {
+      if (launch?.url) complete(launch.url);
+    });
+    return () => {
+      void handle?.remove();
+    };
+  }, [signInWithToken]);
 
   return (
     <BrowserRouter>
@@ -71,6 +105,7 @@ export default function App() {
               <Route path="/track/:videoId" element={<TrackPage />} />
               <Route path="/queue" element={<QueuePage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/auth/google" element={<AuthBridgePage />} />
               <Route path="*" element={<NotFoundPage />} />
             </Routes>
           </main>

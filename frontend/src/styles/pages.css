@@ -1511,3 +1511,107 @@
   opacity: 0.6;
   cursor: default;
 }
+
+/* ---------------------------------------------------------------------------
+ * /auth/google system-browser bridge (Android APK sign-in return)
+ * ------------------------------------------------------------------------- */
+
+.authbridge {
+  min-height: 70vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.authbridge__card {
+  width: 100%;
+  max-width: 400px;
+  padding: 28px 26px;
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  background: #05070c;
+}
+
+.authbridge__brand {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #4d6bfe;
+}
+
+.authbridge__title {
+  margin: 0 0 14px;
+  font-size: 22px;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.authbridge__note {
+  margin: 0 0 16px;
+  font-size: 14px;
+  color: #b3b3b3;
+}
+
+.authbridge__button {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.authbridge__ok {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #4d6bfe;
+}
+
+.authbridge__link {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 999px;
+  background: #4d6bfe;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.authbridge__link:hover {
+  background: #6e8bff;
+}
+
+.authbridge__sub {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: #b3b3b3;
+}
+
+.authbridge__error {
+  margin: 0;
+  font-size: 14px;
+  color: #ff6b6b;
+}
+
+.auth__google-native {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1f1f1f;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.auth__google-native:hover {
+  background: #f1f3f4;
+}

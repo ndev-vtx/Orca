@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuthStore } from "../state/authStore";
 import { CloseIcon } from "./Icons";
+import { isNativeApp, openSystemBrowser } from "../services/nativeAuth";
 
 /** Google Identity Services script id + minimal surface we use. */
 const GSI_SRC = "https://accounts.google.com/gsi/client";
@@ -102,9 +103,12 @@ export default function AuthModal() {
   }, [modal, closeAuth]);
 
   // Google Identity Services: load the script once and render the button.
+  // Inside the Android APK the flow is delegated to the system browser
+  // instead (Google blocks OAuth inside WebViews), so GSI never loads there.
   const googleEnabled = Boolean(providers?.google && providers.clientId);
+  const nativeGoogle = isNativeApp();
   useEffect(() => {
-    if (!modal || !googleEnabled || googleReady) return;
+    if (!modal || !googleEnabled || googleReady || nativeGoogle) return;
     let cancelled = false;
     void loadGoogleScript()
       .then(() => {
@@ -145,7 +149,7 @@ export default function AuthModal() {
     return () => {
       cancelled = true;
     };
-  }, [modal, googleEnabled, googleReady, providers, googleSignIn]);
+  }, [modal, googleEnabled, googleReady, providers, googleSignIn, nativeGoogle]);
 
   if (!modal) return null;
 
@@ -248,12 +252,44 @@ export default function AuthModal() {
 
         <div className="auth__google-slot">
           {googleEnabled && !googleBlocked ? (
-            <>
-              <div ref={googleHostRef} className="auth__google-host" />
-              <div className="auth__divider" aria-hidden="true">
-                <span>or with email</span>
-              </div>
-            </>
+            nativeGoogle ? (
+              <>
+                <button
+                  className="auth__google-native"
+                  onClick={() => void openSystemBrowser("/auth/google")}
+                >
+                  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                    <path
+                      fill="#4285F4"
+                      d="M23.5 12.3c0-.9-.1-1.5-.3-2.2H12v4.3h6.5c-.1 1.1-.8 2.7-2.4 3.8l-.02.15 3.5 2.7.24.03c2.2-2.05 3.5-5.05 3.5-8.8Z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.7-2.9c-1 .7-2.4 1.2-4.2 1.2-3.2 0-5.9-2.1-6.8-5l-.14.01-3.6 2.8-.05.13C3.4 21.3 7.4 24 12 24Z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.2 14.4c-.25-.74-.4-1.53-.4-2.4l-.01-.16-3.7-2.85-.12.06C.5 8.3 0 10.1 0 12s.5 3.7 1.37 5.35l3.83-2.95Z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 4.6c2.3 0 3.8.96 4.7 1.77l3.4-3.3C18.1 1.16 15.2 0 12 0 7.4 0 3.4 2.7 1.37 6.65l3.83 2.95C6.1 6.76 8.8 4.6 12 4.6Z"
+                    />
+                  </svg>
+                  Continue with Google
+                </button>
+                <div className="auth__divider" aria-hidden="true">
+                  <span>or with email</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div ref={googleHostRef} className="auth__google-host" />
+                <div className="auth__divider" aria-hidden="true">
+                  <span>or with email</span>
+                </div>
+              </>
+            )
           ) : (
             <div className="auth__google-off" title="Google sign-in unavailable">
               <button className="auth__google-disabled" disabled aria-label="Google sign-in unavailable">

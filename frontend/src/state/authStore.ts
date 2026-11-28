@@ -25,6 +25,8 @@ interface AuthState {
     agreed: boolean,
   ) => Promise<string>;
   googleSignIn: (credential: string) => Promise<string>;
+  /** Complete a Google sign-in started in the system browser (Android APK deep link). */
+  signInWithToken: (token: string) => Promise<string>;
   signOut: () => Promise<void>;
 }
 
@@ -89,6 +91,24 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } catch (err) {
       set({ busy: false });
       return err instanceof Error ? err.message : "Could not create the account.";
+    }
+  },
+
+  signInWithToken: async (token) => {
+    set({ busy: true });
+    try {
+      rememberToken(token);
+      const me = await authApi.me();
+      if (!me) {
+        localStorage.removeItem(AUTH_TOKEN_KEY);
+        set({ busy: false });
+        return "Sign-in could not be completed.";
+      }
+      set({ user: me, authModal: null, busy: false });
+      return "";
+    } catch (err) {
+      set({ busy: false });
+      return err instanceof Error ? err.message : "Sign-in failed.";
     }
   },
 

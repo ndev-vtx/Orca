@@ -22,6 +22,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Google sign-in return: the system browser completes OAuth on
+                 the deployed web app (Google blocks WebView OAuth), then
+                 redirects to orca://auth?token=... back into the app. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="orca" android:host="auth" />
+            </intent-filter>
+
         </activity>
 
         <provider

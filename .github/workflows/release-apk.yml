@@ -69,6 +69,12 @@ jobs:
           (cd frontend && npm ci || npm install)
 
       - name: Build web app
+        env:
+          # Optional: baked into the /auth/google bridge page as a fallback
+          # when /api/auth/providers is unreachable. The client id is public
+          # by design (safe to embed); leave the secret unset to rely on the
+          # backend endpoint alone.
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
         run: (cd frontend && npm run build)
 
       - name: Sync Capacitor into Android project
