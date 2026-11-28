@@ -1,0 +1,20 @@
+{
+  "name": "orca",
+  "private": true,
+  "version": "1.2.4",
+  "description": "Orca — a deep, floating ocean of music. Root package for the Capacitor Android build.",
+  "scripts": {
+    "build": "cd frontend && npm run build",
+    "cap:sync": "npx cap sync android",
+    "apk": "npm run build && npx cap sync android && cd android && ./gradlew assembleDebug",
+    "apk:release": "npm run build && npx cap sync android && cd android && ./gradlew assembleRelease"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.6.11",
+    "@capacitor/cli": "^7.6.11",
+    "@capacitor/core": "^7.6.11"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  }
+}

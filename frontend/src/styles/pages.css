@@ -1422,3 +1422,92 @@
   background: var(--orca-accent-hover);
   scale: 1.03;
 }
+
+/* ---------------------------------------------------------------------------
+ * Native permission gate (Android APK / Capacitor only)
+ * ------------------------------------------------------------------------- */
+
+.permgate {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.permgate__card {
+  width: 100%;
+  max-width: 420px;
+  padding: 22px 22px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  background: #05070c;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.8);
+}
+
+.permgate__title {
+  margin: 0 0 10px;
+  font-size: 18px;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.permgate__text {
+  margin: 0 0 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #ffffff;
+}
+
+.permgate__sub {
+  margin: 0 0 18px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #b3b3b3;
+}
+
+.permgate__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.permgate__later {
+  padding: 10px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: transparent;
+  color: #b3b3b3;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.permgate__later:hover {
+  color: #ffffff;
+}
+
+.permgate__allow {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 999px;
+  background: #4d6bfe;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.permgate__allow:hover {
+  background: #6e8bff;
+}
+
+.permgate__allow:disabled,
+.permgate__later:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

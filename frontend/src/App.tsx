@@ -17,12 +17,14 @@ import AuthModal from "./components/AuthModal";
 import TrackMenu from "./components/TrackMenu";
 import PlaylistPickerModal from "./components/PlaylistPickerModal";
 import NowPlayingPanel from "./components/NowPlayingPanel";
+import NativePermissionGate from "./components/NativePermissionGate";
 import { usePlayerStore } from "./state/player";
 import { useLibraryStore } from "./state/libraryStore";
 import { useAuthStore } from "./state/authStore";
 import { useIsMobile } from "./utils/device";
 import { applySavedTheme } from "./utils/theme";
 import { useKeyboardShortcuts } from "./utils/shortcuts";
+import { prewarmYouTubeApi } from "./services/audioEngine";
 import "./styles/theme.css";
 import "./styles/layout.css";
 import "./styles/sidebar.css";
@@ -47,6 +49,10 @@ export default function App() {
     void loadLibrary();
     bindEngine();
     void bootstrapAuth();
+    // Start fetching the YouTube IFrame API right away so the first play
+    // never waits on the script download; the player element itself is
+    // still created inside the first user gesture (primeOnGesture).
+    prewarmYouTubeApi();
   }, [loadLibrary, bindEngine, bootstrapAuth]);
 
   return (
@@ -76,6 +82,7 @@ export default function App() {
         <AuthModal />
         <TrackMenu />
         <PlaylistPickerModal />
+        <NativePermissionGate />
       </div>
     </BrowserRouter>
   );

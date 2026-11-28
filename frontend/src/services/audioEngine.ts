@@ -755,3 +755,13 @@ export class AudioEngine {
 }
 
 export const audioEngine = new AudioEngine();
+
+/*
+ * Warm the playback path at app boot: kick off the YouTube IFrame API script
+ * download immediately (App.tsx calls this on mount) so the first play press
+ * races an already-loaded API instead of the network. Harmless if called
+ * repeatedly — the promise is shared — and silent on failure.
+ */
+export function prewarmYouTubeApi(): void {
+  void loadYouTubeIframeApi().catch(() => undefined);
+}

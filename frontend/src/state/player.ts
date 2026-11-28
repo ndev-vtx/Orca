@@ -18,7 +18,7 @@ import { create } from "zustand";
 import { api } from "../services/api";
 import { audioEngine, type EngineEvent } from "../services/audioEngine";
 import { resolveFromBrowser } from "../services/instances";
-import { rememberSong } from "./trackCache";
+import { lookupSong, rememberSong } from "./trackCache";
 import {
   DEFAULT_VOLUME,
   MAX_AUTO_SKIP,
@@ -297,6 +297,30 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
     void api.nowPlaying(song, context).catch(() => undefined);
   }
 
+  /*
+   * Next-track warm-up: once the current track is actually playing, quietly
+   * fetch the upcoming queue track's rich metadata (title/artist/art/album)
+   * into the session cache. Deliberately delayed so it never competes with
+   * stream startup, and skipped when the track is already known. The IFrame
+   * sink itself loads the next video near-instantly via loadVideoById.
+   */
+  let prefetchTimer: number | null = null;
+  function prefetchNextMetadata(): void {
+    if (prefetchTimer !== null) window.clearTimeout(prefetchTimer);
+    prefetchTimer = window.setTimeout(() => {
+      prefetchTimer = null;
+      const st = get();
+      const upcoming = st.queue[st.cursor + 1];
+      if (!upcoming || lookupSong(upcoming.videoId)) return;
+      void api
+        .track(upcoming.videoId)
+        .then((d) => {
+          if (d.song) rememberSong(d.song);
+        })
+        .catch(() => undefined);
+    }, 4000);
+  }
+
   function updateMediaSession(song: SongDto): void {
     if (!("mediaSession" in navigator)) return;
     navigator.mediaSession.metadata = new MediaMetadata({
@@ -357,6 +381,7 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
       case "playing":
         set({ playing: true, loading: false });
         if (state.current) reportHistory(state.current, state.context);
+        prefetchNextMetadata();
         if ("mediaSession" in navigator) {
           navigator.mediaSession.playbackState = "playing";
         }

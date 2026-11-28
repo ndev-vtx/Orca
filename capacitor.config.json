@@ -1,0 +1,14 @@
+{
+  "appId": "com.orca.music",
+  "appName": "Orca",
+  "webDir": "frontend/dist",
+  "backgroundColor": "#05070C",
+  "android": {
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": false,
+    "backgroundColor": "#05070C"
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

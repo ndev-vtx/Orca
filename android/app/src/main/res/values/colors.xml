@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Orca identity: deep black surface + DeepSeek dolphin blue. -->
+    <color name="colorPrimary">#4D6BFE</color>
+    <color name="colorPrimaryDark">#05070C</color>
+    <color name="colorAccent">#4D6BFE</color>
+</resources>

@@ -1,14 +1,37 @@
+# Python
 __pycache__/
 *.pyc
 .pytest_cache/
 .venv/
 venv/
 *.egg-info/
+
+# Node
 node_modules/
 dist/
-build/
+*.tsbuildinfo
+
+# Local env / secrets
 .env
+.env.*
+!.env.example
+
+# Data & logs
 orca.db
 *.log
-*.tsbuildinfo
 .vercel
+
+# Android / Gradle build artifacts (android/.gitignore covers the project
+# internals; these keep stray local artifacts out of git anywhere else)
+.gradle/
+local.properties
+build/
+*.apk
+*.aab
+*.keystore
+!android/app/debug.keystore
+
+# Editors
+.idea/
+.vscode/
+.DS_Store
