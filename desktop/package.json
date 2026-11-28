@@ -1,7 +1,7 @@
 {
   "name": "orca-desktop",
   "productName": "Orca",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "Orca — Spotify-style music app (Windows desktop wrapper for the Orca web app)",
   "main": "main.js",
   "private": true,

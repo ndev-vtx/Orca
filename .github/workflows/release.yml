@@ -166,6 +166,15 @@ jobs:
         working-directory: desktop
         run: npm ci
 
+      # electron-builder names artifacts from desktop/package.json — stamp it
+      # from the app version so the wrapper can never drift out of sync.
+      - name: Stamp wrapper version from package.json
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('desktop/package.json','utf8'));p.version=process.argv[1];fs.writeFileSync('desktop/package.json',JSON.stringify(p,null,2)+'\n');" "$VERSION"
+          node -p "'desktop wrapper version: '+require('./desktop/package.json').version"
+
       - name: Build Windows EXE (portable + NSIS installer)
         working-directory: desktop
         env:
