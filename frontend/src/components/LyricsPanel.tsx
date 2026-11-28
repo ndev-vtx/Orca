@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePlayerStore } from "../state/player";
 import { CloseIcon } from "./Icons";
 
@@ -15,9 +15,26 @@ export default function LyricsPanel() {
   const videoId = current?.videoId ?? null;
   const lineRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  /*
+   * Auto-follow UX: the panel scrolls the active line to centre smoothly and
+   * never on the very first activation (no jump-to-bottom on open/load).
+   * When the user scrolls manually, following pauses and a "Sync" pill
+   * appears to resume it — auto-scroll never fights the user's scroll.
+   */
+  const [follow, setFollow] = useState(true);
+  const followRef = useRef(true);
+  const prevActiveRef = useRef(-1);
+  const loadedForRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (open && videoId) void ensureLyrics();
+    if (loadedForRef.current !== videoId) {
+      /* New track (or first open): reset follow and skip the initial jump. */
+      loadedForRef.current = videoId;
+      prevActiveRef.current = -1;
+      followRef.current = true;
+      setFollow(true);
+    }
   }, [open, videoId, ensureLyrics]);
 
   const activeIdx = useMemo(() => {
@@ -35,14 +52,41 @@ export default function LyricsPanel() {
     /*
      * Scroll only the lyrics body: scrollIntoView would also scroll every
      * ancestor scroll container, yanking the page behind the panel on each
-     * new line.
+     * new line. The very first activation after a track change centres the
+     * current line instantly (without animation) so the panel opens in the
+     * right place instead of visibly sliding from the top to the bottom.
      */
+    if (!followRef.current) return;
     const line = lineRefs.current[activeIdx];
     const body = bodyRef.current;
     if (!line || !body) return;
-    const target = line.offsetTop - body.clientHeight / 2 + line.clientHeight / 2;
-    body.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
+    const firstActivation = prevActiveRef.current === -1;
+    prevActiveRef.current = activeIdx;
+    const target = Math.max(0, line.offsetTop - body.clientHeight / 2 + line.clientHeight / 2);
+    body.scrollTo({ top: target, behavior: firstActivation ? "auto" : "smooth" });
   }, [activeIdx]);
+
+  /* Any manual scroll gesture pauses auto-follow until Sync is pressed. */
+  const pauseFollow = (): void => {
+    if (!followRef.current) return;
+    followRef.current = false;
+    setFollow(false);
+  };
+
+  const resumeFollow = (): void => {
+    followRef.current = true;
+    setFollow(true);
+    if (activeIdx >= 0) {
+      const line = lineRefs.current[activeIdx];
+      const body = bodyRef.current;
+      if (line && body) {
+        body.scrollTo({
+          top: Math.max(0, line.offsetTop - body.clientHeight / 2 + line.clientHeight / 2),
+          behavior: "smooth",
+        });
+      }
+    }
+  };
 
   if (!open) return null;
 
@@ -53,17 +97,33 @@ export default function LyricsPanel() {
           <span className="lyrics__title">{current ? current.title : "No track selected"}</span>
           <span className="lyrics__sub">{current ? current.artist || "Unknown artist" : ""}</span>
         </div>
-        <button
-          className="lyrics__close"
-          onClick={toggleLyrics}
-          aria-label="Close lyrics"
-          title="Close lyrics"
-        >
-          <CloseIcon size={16} />
-        </button>
+        <div className="lyrics__head-actions">
+          {!follow && activeIdx >= 0 && (
+            <button className="lyrics__sync" onClick={resumeFollow} title="Re-sync lyrics to playback">
+              Sync
+            </button>
+          )}
+          <button
+            className="lyrics__close"
+            onClick={toggleLyrics}
+            aria-label="Close lyrics"
+            title="Close lyrics"
+          >
+            <CloseIcon size={16} />
+          </button>
+        </div>
       </header>
 
-      <div className="lyrics__body" ref={bodyRef}>
+      <div
+        className="lyrics__body"
+        ref={bodyRef}
+        onWheel={pauseFollow}
+        onTouchMove={pauseFollow}
+        onPointerDown={(e) => {
+          /* Scrollbar drags land as pointerdown on the container. */
+          if (e.pointerType === "mouse") pauseFollow();
+        }}
+      >
         {status === "loading" && <p className="lyrics__note">Reading the current…</p>}
         {status === "error" && (
           <p className="lyrics__note">Lyrics could not be loaded.</p>

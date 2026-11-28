@@ -24,15 +24,23 @@
 
             <!-- Google sign-in return: the system browser completes OAuth on
                  the deployed web app (Google blocks WebView OAuth), then
-                 redirects to orca://auth?token=... back into the app. -->
+                 redirects back into the app. Two URL shapes are supported:
+                 orca://auth?token=... (legacy) and the app-id scheme
+                 com.orca.music://oauth-callback?token=... (canonical). -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="orca" android:host="auth" />
+                <data android:scheme="com.orca.music" android:host="oauth-callback" />
             </intent-filter>
 
         </activity>
+
+        <service
+            android:name=".MediaPlaybackService"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

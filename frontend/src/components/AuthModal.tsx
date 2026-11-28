@@ -256,7 +256,7 @@ export default function AuthModal() {
               <>
                 <button
                   className="auth__google-native"
-                  onClick={() => void openSystemBrowser("/auth/google")}
+                  onClick={() => void openSystemBrowser("/auth/google?native=1")}
                 >
                   <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
                     <path

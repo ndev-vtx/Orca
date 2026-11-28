@@ -19,6 +19,8 @@ import { api } from "../services/api";
 import { audioEngine, type EngineEvent } from "../services/audioEngine";
 import { resolveFromBrowser } from "../services/instances";
 import { lookupSong, rememberSong } from "./trackCache";
+import { getLyrics, putLyrics } from "./lyricsCache";
+import { nativeMediaUpdate, nativeMediaStop } from "../services/nativeMedia";
 import {
   DEFAULT_VOLUME,
   MAX_AUTO_SKIP,
@@ -311,13 +313,32 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
       prefetchTimer = null;
       const st = get();
       const upcoming = st.queue[st.cursor + 1];
-      if (!upcoming || lookupSong(upcoming.videoId)) return;
-      void api
-        .track(upcoming.videoId)
-        .then((d) => {
-          if (d.song) rememberSong(d.song);
-        })
-        .catch(() => undefined);
+      if (!upcoming) return;
+      /* Warm the next track's rich metadata so its page opens instantly. */
+      if (!lookupSong(upcoming.videoId)) {
+        void api
+          .track(upcoming.videoId)
+          .then((d) => {
+            if (d.song) rememberSong(d.song);
+          })
+          .catch(() => undefined);
+      }
+      /* And warm its lyrics so the panel is ready before the track starts. */
+      if (!getLyrics(upcoming.videoId)) {
+        void api
+          .lyrics(upcoming)
+          .then((res) => {
+            const hasLines = res.parsed.length > 0;
+            const hasPlain = !!(res.plain || res.synced);
+            putLyrics(upcoming.videoId, {
+              parsed: res.parsed,
+              plain: res.plain ?? res.synced ?? null,
+              synced: res.synced ?? null,
+              status: hasLines || hasPlain ? "ready" : "empty",
+            });
+          })
+          .catch(() => undefined);
+      }
     }, 4000);
   }
 
@@ -382,6 +403,7 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
         set({ playing: true, loading: false });
         if (state.current) reportHistory(state.current, state.context);
         prefetchNextMetadata();
+        nativeMediaUpdate(state.current, true);
         if ("mediaSession" in navigator) {
           navigator.mediaSession.playbackState = "playing";
         }
@@ -389,6 +411,7 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
       case "paused":
         set({ playing: false });
         persistSession();
+        nativeMediaUpdate(state.current, false);
         if ("mediaSession" in navigator) {
           navigator.mediaSession.playbackState = "paused";
         }
@@ -444,6 +467,9 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
       lastError: "",
     });
     updateMediaSession(song);
+    /* Native APK: keep the foreground media service in sync (wake lock +
+       lock-screen notification follow the track even before playback). */
+    nativeMediaUpdate(song, false);
     audioEngine.loadTrack(song.videoId, song.videoId, resumeAtMs);
     if (get().lyricsOpen) void get().ensureLyrics();
   }
@@ -698,6 +724,8 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
       if (state.queue.length === 0) return;
       if (!state.autoQueue) {
         announce("queue finished");
+        /* Native APK: drop the wake lock + media notification. */
+        nativeMediaStop();
         return;
       }
       if (radioInFlight) {
@@ -807,6 +835,17 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
       ) {
         return;
       }
+      /* Two-tier cache hit: render instantly, no network round-trip. */
+      const cached = getLyrics(song.videoId);
+      if (cached) {
+        set({
+          lyricsStatus: cached.status,
+          lyricsVideoId: song.videoId,
+          lyrics: cached.parsed,
+          lyricsPlain: cached.plain,
+        });
+        return;
+      }
       set({
         lyricsStatus: "loading",
         lyricsVideoId: song.videoId,
@@ -816,9 +855,15 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
       try {
         const res = await api.lyrics(song);
         const stillCurrent = get().current?.videoId === res.videoId;
-        if (!stillCurrent) return;
         const hasLines = res.parsed.length > 0;
         const hasPlain = !!(res.plain || res.synced);
+        putLyrics(res.videoId || song.videoId, {
+          parsed: res.parsed,
+          plain: res.plain ?? res.synced ?? null,
+          synced: res.synced ?? null,
+          status: hasLines || hasPlain ? "ready" : "empty",
+        });
+        if (!stillCurrent) return;
         set({
           lyrics: hasLines ? res.parsed : [],
           lyricsPlain: res.plain ?? res.synced ?? null,

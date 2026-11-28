@@ -143,3 +143,34 @@
 .lyrics__body {
   position: relative;
 }
+
+/* Auto-follow pause/resume ("Sync") pill + head action group. */
+
+.lyrics__head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lyrics__sync {
+  padding: 5px 14px;
+  border: 1px solid #4d6bfe;
+  border-radius: 999px;
+  background: rgba(77, 107, 254, 0.16);
+  color: #6e8bff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.lyrics__sync:hover {
+  background: #4d6bfe;
+  color: #ffffff;
+}
+
+.tracklyrics__head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

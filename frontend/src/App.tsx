@@ -28,6 +28,7 @@ import { useIsMobile } from "./utils/device";
 import { applySavedTheme } from "./utils/theme";
 import { useKeyboardShortcuts } from "./utils/shortcuts";
 import { prewarmYouTubeApi } from "./services/audioEngine";
+import { onNativeMediaCommand } from "./services/nativeMedia";
 import "./styles/theme.css";
 import "./styles/layout.css";
 import "./styles/sidebar.css";
@@ -47,6 +48,19 @@ export default function App() {
   const isMobile = useIsMobile();
   useKeyboardShortcuts();
 
+  /*
+   * Android APK: relay lock-screen / notification media commands (from the
+   * native MediaPlaybackService's MediaSessionCompat) into the player store.
+   */
+  useEffect(() => {
+    return onNativeMediaCommand((action) => {
+      const st = usePlayerStore.getState();
+      if (action === "playpause") st.toggle();
+      else if (action === "next") st.next(true);
+      else if (action === "prev") st.previous();
+    });
+  }, []);
+
   useEffect(() => {
     // Saved accent must be applied at boot, not only when Settings mounts.
     applySavedTheme();
@@ -61,16 +75,20 @@ export default function App() {
 
   /*
    * Android APK: Google sign-in happens in the system browser (Google blocks
-   * OAuth inside WebViews) and returns via the orca://auth?token=... deep
-   * link. Capture both warm returns (appUrlOpen) and cold starts
-   * (getLaunchUrl) and complete the session.
+   * OAuth inside WebViews) and returns via a deep link. Two URL shapes are
+   * supported: orca://auth?token=... (legacy) and the canonical app-id scheme
+   * com.orca.music://oauth-callback?token=... Capture both warm returns
+   * (appUrlOpen) and cold starts (getLaunchUrl) and complete the session.
    */
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
     const complete = (url: string): void => {
       try {
         const parsed = new URL(url);
-        if (parsed.protocol !== "orca:" || parsed.host !== "auth") return;
+        const isLegacy = parsed.protocol === "orca:" && parsed.host === "auth";
+        const isCanonical =
+          parsed.protocol === "com.orca.music:" && parsed.host === "oauth-callback";
+        if (!isLegacy && !isCanonical) return;
         const token = parsed.searchParams.get("token");
         if (token) void signInWithToken(token);
       } catch {

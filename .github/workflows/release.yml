@@ -1,13 +1,16 @@
-# Auto Release APK
-# Builds the Capacitor Android APK on every push to main and publishes it to a
-# GitHub Release tagged v<version> (version read from frontend/package.json).
+# Auto Release
+# Builds BOTH release artifacts on every push to main and publishes them to a
+# GitHub Release tagged v<version> (version read from frontend/package.json):
+#   Android APK  — Capacitor build (Orca_Latest.apk / Orca_v<version>.apk)
+#   Windows EXE  — Electron wrapper around the live Orca web app
+#                  (Orca_Latest.exe / Orca_v<version>.exe)
 # Signed release APK when keystore secrets exist (ANDROID_KEYSTORE_B64,
 # ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD);
 # otherwise falls back to a debug-signed APK that is still fully installable.
 # The release body carries [skip ci] and the job skips such commits so the
 # release push can never re-trigger the workflow.
 
-name: Auto Release APK
+name: Auto Release
 
 on:
   push:
@@ -17,14 +20,14 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: release-apk
+  group: release
   cancel-in-progress: false
 
 permissions:
   contents: write
 
 jobs:
-  release:
+  apk:
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
     runs-on: ubuntu-latest
     steps:
@@ -119,7 +122,7 @@ jobs:
         working-directory: android
         run: ./gradlew assembleDebug
 
-      - name: Prepare release assets
+      - name: Prepare APK assets
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           mkdir -p output
@@ -130,21 +133,105 @@ jobs:
           cp "output/Orca_v${VERSION}.apk" output/Orca_Latest.apk
           ls -la output
 
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-assets
+          path: output/*.apk
+          if-no-files-found: error
+
+  exe:
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version from package.json
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./frontend/package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Orca Windows wrapper v$VERSION"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install desktop wrapper dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build Windows EXE (portable + NSIS installer)
+        working-directory: desktop
+        env:
+          # Keep electron-builder quiet but informative; skip code signing
+          # (no certificate configured — portable/NSIS exes work unsigned).
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npm run dist
+
+      - name: Prepare EXE assets
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          mkdir -p output
+          # Portable build is the headline download (single-file, no install);
+          # the NSIS setup exe is uploaded alongside it.
+          test -f "desktop/dist/Orca_Portable_${VERSION}.exe"
+          cp "desktop/dist/Orca_Portable_${VERSION}.exe" "output/Orca_v${VERSION}.exe"
+          cp "desktop/dist/Orca_Portable_${VERSION}.exe" output/Orca_Latest.exe
+          if [ -f "desktop/dist/Orca_Setup_${VERSION}.exe" ]; then
+            cp "desktop/dist/Orca_Setup_${VERSION}.exe" output/Orca_Setup_v${VERSION}.exe
+          fi
+          ls -la output
+
+      - name: Upload EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: exe-assets
+          path: |
+            output/*.exe
+          if-no-files-found: error
+
+  release:
+    needs: [apk, exe]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download APK assets
+        uses: actions/download-artifact@v4
+        with:
+          name: apk-assets
+          path: assets
+
+      - name: Download EXE assets
+        uses: actions/download-artifact@v4
+        with:
+          name: exe-assets
+          path: assets
+
       - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
+          VERSION=$(node -p "require('./frontend/package.json').version")
           TAG="v${VERSION}"
           TITLE="Auto Release v${VERSION}"
-          BODY="Auto-build: Update Android_APK to v${VERSION} [skip ci]"
+          BODY="Auto-build: Update Android_APK and Windows_EXE to v${VERSION} [skip ci]"
+          ls -la assets
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            gh release upload "$TAG" output/Orca_Latest.apk "output/Orca_v${VERSION}.apk" \
+            gh release upload "$TAG" assets/Orca_Latest.apk "assets/Orca_v${VERSION}.apk" \
+              assets/Orca_Latest.exe "assets/Orca_v${VERSION}.exe" \
               --repo "$GITHUB_REPOSITORY" --clobber
             gh release edit "$TAG" --title "$TITLE" --notes "$BODY" \
               --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$TAG" output/Orca_Latest.apk "output/Orca_v${VERSION}.apk" \
+            gh release create "$TAG" \
+              assets/Orca_Latest.apk "assets/Orca_v${VERSION}.apk" \
+              assets/Orca_Latest.exe "assets/Orca_v${VERSION}.exe" \
               --title "$TITLE" --notes "$BODY" --target "$GITHUB_SHA" \
               --repo "$GITHUB_REPOSITORY"
           fi

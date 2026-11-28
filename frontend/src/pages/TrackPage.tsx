@@ -13,15 +13,12 @@ import {
   PlayIcon,
 } from "../components/Icons";
 import { usePlayerStore } from "../state/player";
+import { getLyrics, putLyrics } from "../state/lyricsCache";
 import { useLibraryStore } from "../state/libraryStore";
 import { useUiStore } from "../state/uiStore";
 import { lookupSong, rememberSong } from "../state/trackCache";
 
-/** Session-scoped lyric cache so revisiting a track doesn't re-fetch. */
-const lyricsCache = new Map<
-  string,
-  { lines: LyricLine[]; plain: string | null; status: "ready" | "empty" | "error" }
->();
+/** Session + localStorage lyric cache so revisiting a track never re-fetches. */
 
 /**
  * Rich track detail view: large cover, "Bài hát" badge, metadata, play /
@@ -59,6 +56,10 @@ export default function TrackPage() {
   const [lyricsStatus, setLyricsStatus] = useState<"idle" | "loading" | "ready" | "empty" | "error">("idle");
   const lineRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const lyricsBodyRef = useRef<HTMLDivElement | null>(null);
+  /* Auto-follow + user-scroll pause (same contract as LyricsPanel). */
+  const [follow, setFollow] = useState(true);
+  const followRef = useRef(true);
+  const prevActiveRef = useRef(-1);
 
   /*
    * The player already knows this track (the bottom bar and the NOW PLAYING
@@ -172,9 +173,12 @@ export default function TrackPage() {
   useEffect(() => {
     const target = song?.videoId;
     if (!target) return;
-    const cached = lyricsCache.get(target);
+    prevActiveRef.current = -1;
+    followRef.current = true;
+    setFollow(true);
+    const cached = getLyrics(target);
     if (cached) {
-      setLyrics(cached.lines);
+      setLyrics(cached.parsed);
       setLyricsPlain(cached.plain);
       setLyricsStatus(cached.status);
       return;
@@ -190,7 +194,12 @@ export default function TrackPage() {
         const lines = res.parsed ?? [];
         const plain = res.plain ?? res.synced ?? null;
         const status = lines.length > 0 || plain ? ("ready" as const) : ("empty" as const);
-        lyricsCache.set(target, { lines, plain, status });
+        putLyrics(target, {
+          parsed: lines,
+          plain,
+          synced: res.synced ?? null,
+          status: status === "ready" ? "ready" : "empty",
+        });
         setLyrics(lines);
         setLyricsPlain(plain);
         setLyricsStatus(status);
@@ -215,11 +224,38 @@ export default function TrackPage() {
 
   useEffect(() => {
     if (activeIdx < 0) return;
+    if (!followRef.current) return;
     const line = lineRefs.current[activeIdx];
     const body = lyricsBodyRef.current;
     if (!line || !body) return;
-    body.scrollTo({ top: line.offsetTop - body.clientHeight / 2 + line.clientHeight / 2 });
+    /* First activation lands instantly (no visible top→bottom slide); later
+       line changes glide smoothly — and never while the user is scrolling. */
+    const firstActivation = prevActiveRef.current === -1;
+    prevActiveRef.current = activeIdx;
+    const target = Math.max(0, line.offsetTop - body.clientHeight / 2 + line.clientHeight / 2);
+    body.scrollTo({ top: target, behavior: firstActivation ? "auto" : "smooth" });
   }, [activeIdx]);
+
+  const pauseFollow = (): void => {
+    if (!followRef.current) return;
+    followRef.current = false;
+    setFollow(false);
+  };
+
+  const resumeFollow = (): void => {
+    followRef.current = true;
+    setFollow(true);
+    if (activeIdx >= 0) {
+      const line = lineRefs.current[activeIdx];
+      const body = lyricsBodyRef.current;
+      if (line && body) {
+        body.scrollTo({
+          top: Math.max(0, line.offsetTop - body.clientHeight / 2 + line.clientHeight / 2),
+          behavior: "smooth",
+        });
+      }
+    }
+  };
 
   const playSong = () => {
     if (!song) return;
@@ -307,11 +343,26 @@ export default function TrackPage() {
             <section className="tracklyrics">
               <div className="tracklyrics__head">
                 <h2 className="section__title">Lời bài hát</h2>
-                <button className="pill" onClick={toggleLyrics} title="Open the full lyrics panel">
-                  {lyricsOpen ? "Close panel" : "Open panel"}
-                </button>
+                <div className="tracklyrics__head-actions">
+                  {!follow && activeIdx >= 0 && (
+                    <button className="lyrics__sync" onClick={resumeFollow} title="Re-sync lyrics to playback">
+                      Sync
+                    </button>
+                  )}
+                  <button className="pill" onClick={toggleLyrics} title="Open the full lyrics panel">
+                    {lyricsOpen ? "Close panel" : "Open panel"}
+                  </button>
+                </div>
               </div>
-              <div className="tracklyrics__body" ref={lyricsBodyRef}>
+              <div
+                className="tracklyrics__body"
+                ref={lyricsBodyRef}
+                onWheel={pauseFollow}
+                onTouchMove={pauseFollow}
+                onPointerDown={(e) => {
+                  if (e.pointerType === "mouse") pauseFollow();
+                }}
+              >
                 {lyricsStatus === "loading" && <p className="page__note">Reading the current…</p>}
                 {lyricsStatus === "error" && <p className="page__note">Lyrics could not be loaded.</p>}
                 {lyricsStatus === "empty" && (

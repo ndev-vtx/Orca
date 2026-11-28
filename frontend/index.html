@@ -24,6 +24,38 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      /*
+       * Android APK (Capacitor) only, injected before the app bundle: pin
+       * document.visibilityState/hidden to "visible" and swallow
+       * visibilitychange so the YouTube IFrame player never treats a locked
+       * screen or backgrounded app as a reason to pause audio. The native
+       * MediaPlaybackService (foreground + wake lock) keeps the process and
+       * WebView timers alive. In ordinary browsers window.Capacitor is
+       * undefined and this block is inert.
+       */
+      (function () {
+        try {
+          if (
+            !window.Capacitor ||
+            typeof window.Capacitor.isNativePlatform !== "function" ||
+            !window.Capacitor.isNativePlatform()
+          ) {
+            return;
+          }
+          Object.defineProperty(document, "hidden", { get: function () { return false; }, configurable: true });
+          Object.defineProperty(document, "webkitHidden", { get: function () { return false; }, configurable: true });
+          Object.defineProperty(document, "visibilityState", { get: function () { return "visible"; }, configurable: true });
+          document.addEventListener(
+            "visibilitychange",
+            function (e) { e.stopImmediatePropagation(); },
+            true
+          );
+        } catch (err) {
+          /* never break the app over a visibility pin */
+        }
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

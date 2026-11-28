@@ -1,237 +1,73 @@
 # Orca
 
-<div align="center">
-  <img src="frontend/public/orca-icon.svg" width="72" alt="Orca icon" />
-  <h3><em>Deep, dark, and always in motion — an ocean of music.</em></h3>
-</div>
+<p align="center">
+  <img src="frontend/public/orca-icon.svg" alt="Orca" width="96" />
+</p>
 
-Orca is a rebuilt music companion on top of the proven Ember music core: YouTube
-Music catalog search, yt-dlp stream resolution with an LRU stream cache, SQLite
-playlists / favorites / history, LRCLIB lyrics, and playlist import from
-YouTube & Spotify links — now behind the Spotify-style Web/Desktop UI in deep
-black with DeepSeek dolphin-blue accents (`#4D6BFE` / `#6E8BFF`).
+**Orca** is a Spotify-style streaming music app for the browser, Android and Windows. Search and play millions of tracks through YouTube Music discovery, read time-synced lyrics, build playlists, and keep listening with lock-screen / mini-player controls — all in a deep-black interface with an electric-blue accent.
 
-## Layout
+- Web app: **https://orca-d.vercel.app**
+- Downloads (Android `.apk` / Windows `.exe`): **https://github.com/ndev-vtx/Orca/releases**
+- Developer: **Nguyễn Khôi Nguyên** (see [CREDITS.md](CREDITS.md))
 
-```
-orca/
-├── backend/        Python FastAPI + WebSocket API over the unmodified core
-│   ├── orca/       catalog · stream · cache · storage · lyrics · importer · exporter
-│   └── tests/      pytest suite (41 tests)
-└── frontend/       React 18 + TypeScript + Vite Spotify-style shell
-```
+---
 
-## Run the backend
+## Features
 
-```bash
-cd backend
-pip install -r requirements.txt
-uvicorn orca.server:app --host 127.0.0.1 --port 8765
-# diagnostics: python -c "from orca import doctor; print(*doctor.collect(), sep='\n')"
-```
-
-## Run the frontend
-
-```bash
-cd frontend
-npm install
-npm run dev          # http://localhost:5173, /api and /ws proxied to :8765
-npm run build        # typecheck + production bundle
-```
-
-## API surface (phase 1)
-
-| Area | Endpoints |
-|:---|:---|
-| Catalog | `GET /api/search`, `GET /api/home`, `GET /api/similar/{id}`, `GET /api/artists/top`, `GET /api/artist/{browseId}` |
-| Streaming | `POST /api/resolve`, `GET /api/stream/{id}` (302), `GET /api/stream/proxy/{id}` (bytes, Range-aware) |
-| Lyrics | `GET /api/lyrics/{id}` |
-| Library | favorites · history · `now-playing` · playlist CRUD |
-| Import/Export | `POST /api/import`, `POST /api/export` |
-| Live sync | `WS /ws` |
-
-Signed `googlevideo` URLs are never logged and never leak through error payloads.
-
-## Tests
-
-```bash
-cd backend && python -m pytest tests/
-cd frontend && npm run build   # strict TypeScript
-```
+- **Desktop & Mobile UI** — a fixed three-pane Spotify-style layout on desktop and a dedicated touch layout (bottom navigation, mini-player, full-screen sheets) on phones. Device detection combines viewport, pointer and user-agent signals so each platform gets the layout it deserves.
+- **Synced lyrics** — time-synced LRC lyrics fetched from LRCLIB, auto-scrolling with playback, pausing cleanly when you scroll manually (with a **Sync** pill to re-follow), cached in memory + `localStorage` and prefetched for the next queued track.
+- **Desktop Spotify-style PiP** — a floating mini-player (cover art, title, artist, progress, prev / play / next, volume, repeat) via the Document Picture-in-Picture API. Auto-opens when a track is playing and you switch tabs; manual-only while paused; stays usable even shrunk into a corner. Mobile uses native `MediaSession` lock-screen controls instead.
+- **Playlists** — create, rename, delete, add/remove tracks, reorder by drag & drop, in-playlist search and sorting, "Add to Playlist" from anywhere with a clean empty state.
+- **Theme Palette** — pick an accent color in Settings and the whole app updates (buttons, active states, highlights, player controls) while the dark surfaces stay dark.
+- **Android `.apk` & Windows `.exe`** — packaged automatically by GitHub Actions on every push to `main`. The Android build runs as a real app with a foreground media service (music keeps playing when the screen locks), and the Windows build is a lightweight Electron wrapper around the live app with tray + media-key support.
 
 ## Roadmap
 
-- [x] Phase 1 — core rebrand + backend API
-- [x] Phase 2 — Spotify-style UI shell (3-pane layout, sidebar, library, now-playing bar)
-- [ ] Phase 3 — playback engine (PlaybackCore state machine ported to TypeScript)
-- [ ] Phase 4 — queue & lyrics views, import/export UI, Electron shell
+- Server-side database (Postgres) to replace the ephemeral per-deployment SQLite storage.
+- True offline playback with downloadable audio in the PWA.
+- Native iOS packaging alongside the Android APK.
+- Collaborative playlists and shared queues.
+- Equalizer / audio normalization controls.
+- Optional self-hosted extraction worker for deployments that want server-side stream resolution.
 
-## Run the whole web app in Docker
+## Local development
+
+Requirements: **Node.js 20+** and **Python 3.11+**.
 
 ```bash
-docker compose up -d --build
-# Orca on http://localhost:8765 — UI + API from one service
+# Frontend
+cd frontend
+npm install
+npm run dev          # Vite dev server on http://localhost:5173
+
+# Backend API (in a second terminal)
+cd backend
+pip install -r requirements.txt
+uvicorn orca.server:create_app --factory --port 8000
 ```
 
-The image builds the React frontend (Node stage), installs the Python core,
-and serves both from a single uvicorn process. `ORCA_DATA_DIR=/data` holds
-`orca.db` (favorites, history, playlists) — mounted to `./orca-data` on the
-host so data survives rebuilds.
+Point the frontend at the backend with `VITE_API_BASE=http://localhost:8000` (or rely on the Vercel-style rewrite locally). Data is stored in SQLite under `ORCA_DATA_DIR` (default `./data`).
 
-No Docker? The backend serves a built frontend by itself:
+## Build & package
 
 ```bash
+# Web production build
 cd frontend && npm run build
-cd ../backend && pip install -r requirements.txt
-uvicorn orca.server:app --host 0.0.0.0 --port 8765
-# http://localhost:8765 serves the UI; /api and /ws as documented above
+
+# Android APK (requires Java 21 + Android SDK)
+npm install && npx cap sync android
+cd android && ./gradlew assembleDebug
+
+# Windows desktop wrapper
+cd desktop && npm install && npm run dist
 ```
 
-The static mount is opt-in: it activates when `frontend/dist` exists
-(or set `ORCA_STATIC_DIR`), and never shadows `/api` or `/ws`.
+Pushes to `main` trigger the **Auto Release** workflow, which builds and publishes `Orca_Latest.apk` / `Orca_v<version>.apk` and `Orca_Latest.exe` / `Orca_v<version>.exe` to [Releases](https://github.com/ndev-vtx/Orca/releases).
 
-## Deploying to Vercel (or any serverless host)
+## Tech stack
 
-The repo is Vercel-ready: `vercel.json` builds the frontend and runs the whole
-FastAPI backend as a serverless function. Push and import the repo as a single
-project — no extra setup on the Vercel side.
+FastAPI · yt-dlp · ytmusicapi · LRCLIB · SQLite · React 18 · TypeScript (strict) · Vite 5 · zustand 4 · Capacitor 7 · Electron. See [CREDITS.md](CREDITS.md) for the full credits.
 
-**YouTube bot check on datacenter IPs:** YouTube refuses *unsigned* stream
-extraction from cloud providers ("Sign in to confirm you're not a bot"). Orca
-rotates yt-dlp player profiles to dodge it, and the reliable fix is a signed-in
-session cookie:
+## License
 
-1. Use a throwaway Google/YouTube account (the cookie will be attached to it).
-2. In a browser logged in **only** as that account, install a cookies export
-   extension (e.g. "Get cookies.txt LOCALLY"), open `youtube.com`, and export
-   in **Netscape format**.
-3. In Vercel → Project → Settings → Environment Variables, add
-   `ORCA_YT_COOKIE` with the whole file content as the value (multi-line is
-   fine; escaped `\n` sequences also work), then redeploy.
-
-Verify with `GET /api/doctor` — the `yt cookies` line must say `configured`.
-
-Note that serverless storage is ephemeral: favorites, history and playlists
-reset when the instance recycles. Point `ORCA_DATA_DIR` at a persistent disk
-host, or mount one, for durable library data.
-
-## Deploying to Vercel (or any serverless host)
-
-The repo is Vercel-ready: `vercel.json` builds the frontend and runs the whole
-FastAPI backend as a serverless function. Push and import the repo as a single
-project — no extra setup on the Vercel side.
-
-**YouTube blocks unsigned stream extraction from datacenter IPs** ("Sign in to
-confirm you're not a bot"). Orca rotates yt-dlp player profiles to dodge it,
-but the reliable fix is a signed-in session cookie:
-
-1. Use a **throwaway** Google/YouTube account (automated use can get an
-   account rate-limited or banned — never your main one).
-2. Open a **private/incognito window**, log into YouTube as that account.
-3. In the **same window and tab**, open `https://www.youtube.com/robots.txt`
-   (keep it the only open private tab — this freezes cookie rotation).
-4. Export `youtube.com` cookies from that tab with an extension such as
-   "Get cookies.txt LOCALLY" (**Netscape format**), then **close the incognito
-   window immediately** so YouTube never rotates the session.
-5. Vercel → Project → Settings → Environment Variables → add `ORCA_YT_COOKIE`
-   with the whole file as the value (multi-line fine, escaped `\n` also
-   works), then redeploy.
-
-Check `https://<your-app>.vercel.app/api/doctor` afterwards:
-
-- `yt cookies : configured` — the env var was picked up
-- `stream test : OK (signed url issued)` — extraction works end-to-end
-- `stream test : FAILED: <reason>` — the verbatim YouTube/yt-dlp refusal to debug with
-
-`ORCA_YTDLP_CLIENTS` (optional) overrides the player profiles, e.g.
-`tv,web_safari;android_vr` (`;` separates profiles tried in order, `,` the
-clients per profile). Cookie sessions automatically fetch the watch page
-(only pageless extraction skips it).
-
-## Google Sign-In setup
-
-Google Sign-In activates automatically when `ORCA_GOOGLE_CLIENT_ID` is set as
-an environment variable (Vercel: Project → Settings → Environment Variables).
-
-To prevent `Error 400: origin_mismatch`, the OAuth client in
-[Google Cloud Console → APIs & Services → Credentials](https://console.cloud.google.com/apis/credentials)
-must list **every origin the app is opened from** under
-**Authorized JavaScript origins**, e.g.:
-
-- `https://orca-d.vercel.app` (production)
-- `https://<preview-project>.vercel.app` (preview deployments, if used)
-- `http://localhost:5173` and `http://localhost:8765` (local development)
-
-After adding origins, save, then hard-reload the app (GIS caches client
-config per origin). The auth modal already detects `origin_mismatch` and
-shows the exact origin to whitelist.
-
-### How playback works on hosted deployments
-
-Primary playback is the **official YouTube IFrame Player API**, run inside
-the listener's browser (`frontend/src/services/audioEngine.ts`). The stream
-is served by YouTube itself from the user's own connection, so datacenter
-bot checks, PO-token gates and IP-locked signed URLs never apply — no
-cookies, no token server, no mirrors required.
-
-If a track cannot be embedded (uploader disabled embedding, player failure),
-the client walks a fallback chain once per track: the Orca backend's yt-dlp
-resolver (the normal path when Orca runs locally, where residential IPs are
-welcome) → the server's stream proxy → public Piped/Invidious instances
-fetched directly from the browser.
-
-### Zero-extra-server sourcing: public mirrors (default on)
-
-Hosted deployments additionally resolve streams through public **Piped /
-Invidious / Cobalt** instances before touching yt-dlp (see
-`backend/orca/remote.py`). These instances resolve the track on their own
-egress and proxy the bytes themselves, so the URL they hand out plays from
-**any** client IP — no token server, no cookies required in many cases.
-Every candidate URL is validated with a ranged GET before being returned.
-
-If the server layer comes up empty, the **browser itself** asks the same
-instances directly (`frontend/src/services/instances.ts`): the request
-comes from the listener's own connection, which YouTube never bot-checks.
-
-Optional environment overrides:
-
-- `ORCA_REMOTE_SOURCES=off` — disable the mirror layer entirely
-- `ORCA_PIPED_INSTANCES`, `ORCA_INVIDIOUS_INSTANCES`, `ORCA_COBALT_INSTANCES`
-  — comma-separated instance base URLs (order = preference)
-
-Public instances are community-run: performance varies and no instance is an
-SLA. When a track sometimes fails to load, appending more instances via the
-env vars is the whole maintenance story. The yt-dlp ladder (cookies,
-`ORCA_YTDLP_CLIENTS`, optional `ORCA_POT_BASE_URL` PO-token provider) stays
-as the fallback layer and is what works on residential connections such as a
-locally run desktop container.
-
-### Legacy PO-token provider details
-
-Even with cookies, YouTube increasingly **gates audio-only formats behind
-proof-of-origin (PO) tokens** on datacenter IPs — you'll see "Requested format
-is not available" or `UNPLAYABLE` for every profile in `/api/resolve`'s
-`trail`. The sanctioned fix is [bgutil-ytdlp-pot-provider](https://github.com/Brainicism/bgutil-ytdlp-pot-provider)
-(maintainer-endorsed in yt-dlp #17497: use a PO token provider + the `mweb`
-client). Orca already ships the yt-dlp plugin; it just needs a provider
-server:
-
-1. Import [FoxeiZ/bgutil-ytdlp-pot-vercal](https://github.com/FoxeiZ/bgutil-ytdlp-pot-vercal)
-   into Vercel as its **own project** (it is the bgutil server packaged for
-   Vercel; deploy with defaults).
-2. Note its URL, e.g. `https://your-pot-provider.vercel.app`.
-3. On the **Orca** project, add env var `ORCA_POT_BASE_URL` with that URL and
-   redeploy.
-4. Sanity-check the provider: `curl https://your-pot-provider.vercel.app/ping`
-   should answer with a version. (The endpoint is unauthenticated — fine for a
-   hobby deployment, but don't advertise the URL.)
-
-Cookies + PO tokens together is the combination that works on serverless:
-tokens prove the request's origin to YouTube's web clients, the cookie clears
-the login requirement that tokens alone cannot bypass on flagged IPs.
-Doctor now prints `yt pot provider : configured` when the wiring is picked up,
-and the `stream test` exercises token minting end to end.
-
-Note that serverless storage is ephemeral: favorites, history and playlists
-reset when the instance recycles. Point `ORCA_DATA_DIR` at a persistent disk
-host, or mount one, for durable library data.
+[MIT](LICENSE) — © Nguyễn Khôi Nguyên

@@ -1,0 +1,47 @@
+{
+  "name": "orca-desktop",
+  "productName": "Orca",
+  "version": "1.2.4",
+  "description": "Orca — Spotify-style music app (Windows desktop wrapper for the Orca web app)",
+  "main": "main.js",
+  "private": true,
+  "author": "Nguyễn Khôi Nguyên",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win",
+    "dist:portable": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.orca.music",
+    "productName": "Orca",
+    "asar": true,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "icon.png",
+      "package.json"
+    ],
+    "win": {
+      "icon": "icon.png",
+      "target": [
+        { "target": "portable", "arch": ["x64"] },
+        { "target": "nsis", "arch": ["x64"] }
+      ]
+    },
+    "portable": {
+      "artifactName": "Orca_Portable_${version}.exe"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "artifactName": "Orca_Setup_${version}.exe"
+    }
+  }
+}
