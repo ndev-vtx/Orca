@@ -3,6 +3,7 @@ import TopBar from "../components/TopBar";
 import { MusicTile } from "../components/Shared";
 import { CloseIcon, PauseIcon, PlayIcon } from "../components/Icons";
 import { usePlayerStore } from "../state/player";
+import { resolveArtist } from "../utils/artist";
 
 export default function QueuePage() {
   const queue = usePlayerStore((s) => s.queue);
@@ -70,7 +71,7 @@ export default function QueuePage() {
             <p className="page__eyebrow">Now playing</p>
             <h1 className="page__name">{current ? current.title : "Nothing playing"}</h1>
             <p className="page__byline">
-              {current ? current.artist || "Unknown artist" : "Pick a track to start the current"}
+              {current ? resolveArtist(current) || "Unknown artist" : "Pick a track to start the current"}
             </p>
           </div>
           <div className="page__actions">

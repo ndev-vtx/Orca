@@ -17,6 +17,7 @@ import { getLyrics, putLyrics } from "../state/lyricsCache";
 import { useLibraryStore } from "../state/libraryStore";
 import { useUiStore } from "../state/uiStore";
 import { lookupSong, rememberSong } from "../state/trackCache";
+import { isArtistMissing, resolveArtist } from "../utils/artist";
 
 /*
  * Rich track detail view: large cover, "Bài hát" badge, metadata, play /
@@ -88,9 +89,14 @@ export default function TrackPage() {
   const song: SongDto | null = useMemo(() => {
     const fill = (base: SongDto, from: SongDto): SongDto => {
       const title = base.title && base.title !== "Unknown track" ? base.title : from.title || base.title;
+      /* Placeholder artists ("unknown artist" from a bot-flagged backend
+         lookup) must never shadow an artist the player already knows. */
+      const baseArtistKnown = !isArtistMissing(base.artist);
+      const fromArtistKnown = !isArtistMissing(from.artist);
+      const artist = baseArtistKnown ? base.artist : fromArtistKnown ? from.artist : resolveArtist(base) || from.artist || "";
       if (
         title === base.title &&
-        (base.artist || !from.artist) &&
+        artist === base.artist &&
         (base.artworkUrl || !from.artworkUrl) &&
         (base.duration || !from.duration) &&
         (base.album || !from.album)
@@ -100,7 +106,7 @@ export default function TrackPage() {
       return {
         ...base,
         title,
-        artist: base.artist || from.artist || "",
+        artist,
         artworkUrl: base.artworkUrl || from.artworkUrl || "",
         duration: base.duration || from.duration || "",
         album: base.album || from.album || "",

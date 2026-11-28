@@ -19,6 +19,7 @@ import {
   VolumeIcon,
 } from "./Icons";
 import { formatTime, usePlayerStore } from "../state/player";
+import { resolveArtist } from "../utils/artist";
 
 interface MiniPlayerProps {
   variant: "pip" | "overlay";
@@ -109,7 +110,7 @@ export default function MiniPlayer({ variant, onClose }: MiniPlayerProps) {
               {current ? current.title : "Nothing playing"}
             </span>
             <span className="miniplayer__artist">
-              {current ? current.artist || "Unknown artist" : "Orca"}
+              {current ? resolveArtist(current) || "Unknown artist" : "Orca"}
             </span>
           </div>
           <button

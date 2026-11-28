@@ -11,6 +11,7 @@ import type { LibraryFilter } from "../types";
 import { HeartIcon, PlusIcon, SearchIcon, TrashIcon } from "./Icons";
 import { MusicTile } from "./Shared";
 import PlaylistModal from "./PlaylistModal";
+import { resolveArtist } from "../utils/artist";
 
 const FILTERS: { id: LibraryFilter; label: string }[] = [
   { id: "all", label: "All" },
@@ -181,7 +182,7 @@ export default function LibraryPane() {
                 {!store.sidebarCollapsed && (
                   <span className="libpane__row-main">
                     <span className="libpane__row-title">{t.title}</span>
-                    <span className="libpane__row-sub">{t.artist || "unknown artist"}</span>
+                    <span className="libpane__row-sub">{resolveArtist(t) || "unknown artist"}</span>
                   </span>
                 )}
               </button>

@@ -5,6 +5,7 @@ import { MoreIcon } from "./Icons";
 import { usePlayerStore } from "../state/player";
 import { useUiStore } from "../state/uiStore";
 import { useIsMobile } from "../utils/device";
+import { resolveArtist } from "../utils/artist";
 
 /**
  * Desktop right-side "Now Playing" panel — deliberately clean: artwork, track
@@ -50,7 +51,7 @@ export default function NowPlayingPanel() {
               {current.title}
             </span>
             <span className="np-panel__artist" title={current.artist}>
-              {current.artist || "Unknown artist"}
+              {resolveArtist(current) || "Unknown artist"}
             </span>
           </div>
           <div className="np-panel__actions">

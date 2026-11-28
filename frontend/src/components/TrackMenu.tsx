@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { usePlayerStore } from "../state/player";
 import { useLibraryStore } from "../state/libraryStore";
 import { useUiStore } from "../state/uiStore";
+import { resolveArtist } from "../utils/artist";
 
 /**
  * Three-dot context menu for tracks — Spotify-style actions. Rendered in a
@@ -58,7 +59,7 @@ export default function TrackMenu() {
     const url = `${window.location.origin}/track/${encodeURIComponent(song.videoId)}`;
     try {
       if (navigator.share) {
-        await navigator.share({ title: `${song.title} · ${song.artist}`, url });
+        await navigator.share({ title: `${song.title} · ${resolveArtist(song) || song.title}`, url });
       } else {
         await navigator.clipboard.writeText(url);
         notify("Link copied to clipboard");
@@ -85,7 +86,7 @@ export default function TrackMenu() {
         notify("Radio — playing tracks like this one");
       },
     },
-    { label: "Go to artist", hint: song.artist || undefined, run: act(() => goSearch(song.artist || song.title)) },
+    { label: "Go to artist", hint: resolveArtist(song) || undefined, run: act(() => goSearch(resolveArtist(song) || song.title)) },
     ...(albumId
       ? [{ label: "Go to album", run: act(() => navigate(`/album/${encodeURIComponent(albumId)}`)) }]
       : []),

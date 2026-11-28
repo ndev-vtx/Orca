@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { api } from "../services/api";
 import type { ArtistEntry, LibraryFilter, PlaylistSummary, SongDto } from "../types";
+import { resolveArtist } from "../utils/artist";
 
 export const LIBRARY_FILTER_KEY = "orca.library.filter";
 export const SIDEBAR_COLLAPSED_KEY = "orca.ui.sidebar.collapsed";
@@ -182,7 +183,7 @@ export function selectLibraryItems(state: LibraryState): SongDto[] {
 export function selectArtistEntries(state: LibraryState): ArtistEntry[] {
   const byArtist = new Map<string, ArtistEntry>();
   for (const track of state.savedTracks) {
-    const name = track.artist || "unknown artist";
+    const name = resolveArtist(track) || "unknown artist";
     const entry = byArtist.get(name) ?? { artist: name, artworkUrl: track.artworkUrl, count: 0 };
     if (!entry.artworkUrl) entry.artworkUrl = track.artworkUrl;
     entry.count += 1;

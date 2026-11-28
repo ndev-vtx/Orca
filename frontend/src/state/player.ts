@@ -30,6 +30,7 @@ import {
   type RepeatMode,
 } from "./players";
 import type { LyricLine, SongDto } from "../types";
+import { resolveArtist } from "../utils/artist";
 
 export const PLAYER_VOLUME_KEY = "orca.player.volume";
 export const PLAYER_MUTED_KEY = "orca.player.muted";
@@ -346,7 +347,7 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
     if (!("mediaSession" in navigator)) return;
     navigator.mediaSession.metadata = new MediaMetadata({
       title: song.title,
-      artist: song.artist,
+      artist: resolveArtist(song),
       album: "Orca",
       artwork: song.artworkUrl ? [{ src: song.artworkUrl, sizes: "640x640" }] : [],
     });

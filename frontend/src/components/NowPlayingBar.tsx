@@ -22,6 +22,7 @@ import { useUiStore } from "../state/uiStore";
 import { activePip, canDocumentPip, openPipWindow } from "../services/pip";
 import { useIsMobile } from "../utils/device";
 import MiniPlayer from "./MiniPlayer";
+import { resolveArtist } from "../utils/artist";
 
 type SliderKind = "seek" | "volume";
 
@@ -74,7 +75,7 @@ export default function NowPlayingBar() {
 
   useEffect(() => {
     const title = current
-      ? `${current.title} · ${current.artist || "Unknown artist"}`
+      ? `${current.title} · ${resolveArtist(current) || "Unknown artist"}`
       : "Orca";
     document.title = title;
     /*
@@ -236,7 +237,7 @@ export default function NowPlayingBar() {
             {current ? current.title : "Nothing playing"}
           </span>
           <span className="bar__sub">
-            {current ? current.artist || "Unknown artist" : "Orca"}
+            {current ? resolveArtist(current) || "Unknown artist" : "Orca"}
           </span>
         </div>
         {current && (

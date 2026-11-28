@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePlayerStore } from "../state/player";
 import { CloseIcon } from "./Icons";
+import { resolveArtist } from "../utils/artist";
 
 export default function LyricsPanel() {
   const open = usePlayerStore((s) => s.lyricsOpen);
@@ -95,7 +96,7 @@ export default function LyricsPanel() {
       <header className="lyrics__head">
         <div className="lyrics__meta">
           <span className="lyrics__title">{current ? current.title : "No track selected"}</span>
-          <span className="lyrics__sub">{current ? current.artist || "Unknown artist" : ""}</span>
+          <span className="lyrics__sub">{current ? resolveArtist(current) || "Unknown artist" : ""}</span>
         </div>
         <div className="lyrics__head-actions">
           {!follow && activeIdx >= 0 && (

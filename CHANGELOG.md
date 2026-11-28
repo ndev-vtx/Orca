@@ -3,7 +3,13 @@
 All notable changes to **Orca** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project adheres to semantic versioning.
 
-## [1.2.4] — Current release
+## [1.2.5]
+
+### Fixed
+- **`unknown artist` eliminated**: artist names now resolve from every available field (`artist`, `artists[]`, `author`, `channelTitle`, `subtitle`) with `" - Topic"`/`VEVO` suffix stripping and an `"Artist - Title"` title-split fallback; every render site (bottom bar, mobile mini-player, NOW PLAYING panel, track page, queue, playlist picker, PiP/tab title, MediaSession metadata) uses the shared resolver, and sparse backend responses can no longer overwrite an artist the player already knows.
+- **Faster track loading on revisit/reload**: the track-metadata cache gained a localStorage tier (TTL 14 days, capacity 150) alongside the in-memory LRU, and sparse entries are merged so cached metadata always wins over placeholders — re-opened sessions start warm and track pages open instantly for anything played before.
+
+## [1.2.4] — Previous release
 
 ### Added
 - **Android APK packaging** (Capacitor 7): standalone `com.orca.music` app with Orca launcher icons, dark `#05070C` theme, first-launch Vietnamese/English background-audio permission dialog, and an **Auto Release** GitHub Actions pipeline publishing `Orca_Latest.apk` / `Orca_v1.2.4.apk`.

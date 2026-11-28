@@ -3,6 +3,7 @@ import { useLibraryStore } from "../state/libraryStore";
 import { usePlayerStore } from "../state/player";
 import { useUiStore } from "../state/uiStore";
 import { CloseIcon } from "./Icons";
+import { resolveArtist } from "../utils/artist";
 
 /**
  * "Add to playlist" picker: choose one of the user's playlists or create a
@@ -92,7 +93,7 @@ export default function PlaylistPickerModal() {
         </header>
 
         <p className="picker__track" title={song.title}>
-          {song.title} <span>· {song.artist || "Unknown artist"}</span>
+          {song.title} <span>· {resolveArtist(song) || "Unknown artist"}</span>
         </p>
 
         {!hasPlaylists && !creating && (

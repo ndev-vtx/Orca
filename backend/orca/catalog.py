@@ -143,10 +143,47 @@ def _with_retry(
     raise RuntimeError(f"{operation_name} failed without exception")
 
 
+_PLACEHOLDER_ARTIST_RE = re.compile(
+    r"^(unknown\s*artist|unknown|various\s*artists|n/a|-)$", re.IGNORECASE
+)
+
+
+def _clean_artist_name(name: str) -> str:
+    """Normalize one raw artist name: unescape entities, strip VEVO/topic
+    channel suffixes ("Artist - Topic", "ArtistVEVO") and whitespace."""
+    out = html.unescape(str(name)).strip()
+    out = re.sub(r"\s*-\s*Topic\s*$", "", out, flags=re.IGNORECASE).strip()
+    out = re.sub(r"\s*-\s*VEVO\s*$", "", out, flags=re.IGNORECASE).strip()
+    out = re.sub(r"VEVO\s*$", "", out, flags=re.IGNORECASE).strip()
+    return out
+
+
+def _artist_from_title(title: str) -> str:
+    """Parse "Artist - Title" from a bare video title when no separate artist
+    metadata exists. Only splits when the left side plausibly is a name."""
+    idx = title.find(" - ")
+    if idx <= 0 or idx > 60:
+        return ""
+    left = title[:idx].strip()
+    right = title[idx + 3:].strip()
+    if not left or not right:
+        return ""
+    if left.lower().startswith(("http://", "https://", "www.")):
+        return ""
+    if re.search(r"[\[\(](official|lyrics?|audio|video|mv|hd|4k)\b", left, re.IGNORECASE):
+        return ""
+    return left
+
+
 def _artist_line(item: Dict[str, Any]) -> str:
-    """Extract and normalize artist name(s) from a search or watch item."""
+    """Extract and normalize artist name(s) from a search or watch item.
+    Tries, in order: artist string, artists/author/subtitle lists, then an
+    "Artist - Title" split from the video title itself. " - Topic" suffixes
+    are stripped; placeholder names collapse to "unknown artist"."""
     if isinstance(item.get("artist"), str) and item["artist"].strip():
-        return html.unescape(item["artist"].strip())
+        cleaned = _clean_artist_name(item["artist"])
+        if cleaned and not _PLACEHOLDER_ARTIST_RE.match(cleaned):
+            return cleaned
     raw = item.get("artists") or item.get("author") or item.get("subtitle") or item.get("artist") or []
     if isinstance(raw, dict):
         raw = [raw]
@@ -154,13 +191,25 @@ def _artist_line(item: Dict[str, Any]) -> str:
         names = []
         for entry in raw:
             if isinstance(entry, dict) and entry.get("name"):
-                names.append(str(entry["name"]).strip())
+                names.append(_clean_artist_name(entry["name"]))
             elif isinstance(entry, str) and entry.strip():
-                names.append(entry.strip())
+                names.append(_clean_artist_name(entry))
+        names = [n for n in names if n and not _PLACEHOLDER_ARTIST_RE.match(n)]
         if names:
-            return html.unescape(", ".join(names))
+            return ", ".join(names)
     if isinstance(raw, str) and raw.strip():
-        return html.unescape(raw.strip())
+        cleaned = _clean_artist_name(raw)
+        if cleaned and not _PLACEHOLDER_ARTIST_RE.match(cleaned):
+            return cleaned
+    # Last resort: "Artist - Title" baked into the video title.
+    details = item.get("videoDetails")
+    title = item.get("title")
+    if title is None and isinstance(details, dict):
+        title = details.get("title")
+    if isinstance(title, str) and title.strip():
+        parsed = _artist_from_title(html.unescape(title).strip())
+        if parsed:
+            return parsed
     return "unknown artist"
 
 
