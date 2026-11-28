@@ -171,7 +171,7 @@ export default function MiniPlayer({ variant, onClose }: MiniPlayerProps) {
             <NextIcon size={18} />
           </button>
           <button
-            className={`miniplayer__ctrl miniplayer__ctrl--extra${
+            className={`miniplayer__ctrl miniplayer__ctrl--extra miniplayer__ctrl--repeat${
               repeat !== "off" ? " miniplayer__ctrl--on" : ""
             }`}
             aria-label={`Repeat: ${repeat}`}
@@ -181,7 +181,7 @@ export default function MiniPlayer({ variant, onClose }: MiniPlayerProps) {
             {repeat === "one" ? <RepeatOneIcon size={16} /> : <RepeatIcon size={16} />}
           </button>
           <button
-            className="miniplayer__ctrl miniplayer__ctrl--extra"
+            className="miniplayer__ctrl miniplayer__ctrl--extra miniplayer__ctrl--mute"
             aria-label={muted ? "Unmute" : "Mute"}
             title={muted ? "Unmute" : "Mute"}
             onClick={() => setMuted(!muted)}
@@ -213,6 +213,16 @@ export default function MiniPlayer({ variant, onClose }: MiniPlayerProps) {
           >
             <div className="miniplayer__volume-fill" style={{ width: `${volumeShown}%` }} />
           </div>
+          {/* Hide/close stays inside the controls row so it is always one
+              click away — even when the window is shrunk into a corner. */}
+          <button
+            className="miniplayer__ctrl miniplayer__ctrl--hide"
+            aria-label="Hide mini-player"
+            title="Hide"
+            onClick={onClose}
+          >
+            ✕
+          </button>
         </div>
       </div>
     </div>

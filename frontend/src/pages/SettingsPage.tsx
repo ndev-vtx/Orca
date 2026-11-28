@@ -84,6 +84,9 @@ function readBillboardPref(): BillboardPref {
   }
 }
 
+/* Displayed even before /api/health answers, so the version is never blank. */
+const APP_VERSION = "1.2.4";
+
 export default function SettingsPage() {
   const [pref, setPref] = useState<BillboardPref>(readBillboardPref);
   const [version, setVersion] = useState("");
@@ -275,7 +278,7 @@ export default function SettingsPage() {
         <section className="settings__section">
           <h2 className="settings__heading">Updates</h2>
           <p className="settings__hint">
-            {version ? `Orca backend version ${version}.` : "Checking version…"}
+            {version ? `Orca ver ${version}.` : `Orca ver ${APP_VERSION}.`}
           </p>
         </section>
 

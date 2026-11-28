@@ -18,6 +18,7 @@ import { create } from "zustand";
 import { api } from "../services/api";
 import { audioEngine, type EngineEvent } from "../services/audioEngine";
 import { resolveFromBrowser } from "../services/instances";
+import { rememberSong } from "./trackCache";
 import {
   DEFAULT_VOLUME,
   MAX_AUTO_SKIP,
@@ -406,6 +407,10 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
     loadedId = song.videoId;
     switching = true;
     historyReportedId = null;
+    /* Keep rich metadata reachable for /track/:id deep-links and lookups
+       that fail later (trackCache backs TrackPage's fallback). */
+    rememberSong(song);
+    for (const t of get().queue) rememberSong(t);
     set({
       current: song,
       loading: true,

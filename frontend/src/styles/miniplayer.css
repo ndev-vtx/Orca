@@ -264,9 +264,25 @@
     padding: 12px;
   }
 
-  .miniplayer__ctrl--extra,
+  /* Corner-sized windows keep EVERY control: only the volume *slider* steps
+     aside. The mute toggle moves to the outermost left with Repeat right
+     next to it, then Previous / Play / Next, and the hide (×) button last. */
   .miniplayer__volume {
     display: none;
+  }
+
+  .miniplayer__ctrl--mute {
+    order: -2;
+  }
+
+  .miniplayer__ctrl--repeat {
+    order: -1;
+  }
+
+  .miniplayer__ctrl--hide {
+    order: 2;
+    font-size: 13px;
+    font-weight: 600;
   }
 
   .miniplayer__art {

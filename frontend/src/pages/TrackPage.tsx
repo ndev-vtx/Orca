@@ -15,6 +15,7 @@ import {
 import { usePlayerStore } from "../state/player";
 import { useLibraryStore } from "../state/libraryStore";
 import { useUiStore } from "../state/uiStore";
+import { lookupSong, rememberSong } from "../state/trackCache";
 
 /** Session-scoped lyric cache so revisiting a track doesn't re-fetch. */
 const lyricsCache = new Map<
@@ -36,6 +37,7 @@ export default function TrackPage() {
 
   const play = usePlayerStore((s) => s.play);
   const current = usePlayerStore((s) => s.current);
+  const queue = usePlayerStore((s) => s.queue);
   const playing = usePlayerStore((s) => s.playing);
   const positionMs = usePlayerStore((s) => s.positionMs);
   const toggle = usePlayerStore((s) => s.toggle);
@@ -59,18 +61,53 @@ export default function TrackPage() {
   const lyricsBodyRef = useRef<HTMLDivElement | null>(null);
 
   /*
+   * The player already knows this track (the bottom bar and the NOW PLAYING
+   * panel show the real title/artist), so the page must too: prefer the live
+   * player entry, then the queue, then the session cache of every song that
+   * has played. This keeps /track/:id from degrading to "Unknown track" when
+   * the backend lookup is bot-flagged or fails.
+   */
+  const storeSong: SongDto | null = useMemo(() => {
+    if (!videoId) return null;
+    if (current?.videoId === videoId) return current;
+    return queue.find((t) => t.videoId === videoId) ?? lookupSong(videoId);
+  }, [videoId, current, queue]);
+
+  /*
    * The backend can be bot-flagged for a specific video (get_song returns no
    * videoDetails) and then ships song: null. The IFrame player does not care
    * about that flag, so synthesize a playable SongDto from the detail shell
    * instead of rendering nothing — the track page always opens.
    * The fallback object MUST be memoized: TrackPage re-renders twice a second
    * with live playback position, and a fresh object here would re-run the
-   * lyrics effect (and re-fetch) on every render.
+   * lyrics effect (and re-fetch) on every render. When nothing needs
+   * backfilling the original object is returned untouched so its identity
+   * (and the lyrics effect) stays stable.
    */
   const song: SongDto | null = useMemo(() => {
-    if (detail?.song) return detail.song;
-    if (!detail) return null;
-    return {
+    const fill = (base: SongDto, from: SongDto): SongDto => {
+      const title = base.title && base.title !== "Unknown track" ? base.title : from.title || base.title;
+      if (
+        title === base.title &&
+        (base.artist || !from.artist) &&
+        (base.artworkUrl || !from.artworkUrl) &&
+        (base.duration || !from.duration) &&
+        (base.album || !from.album)
+      ) {
+        return base;
+      }
+      return {
+        ...base,
+        title,
+        artist: base.artist || from.artist || "",
+        artworkUrl: base.artworkUrl || from.artworkUrl || "",
+        duration: base.duration || from.duration || "",
+        album: base.album || from.album || "",
+      };
+    };
+    if (detail?.song) return storeSong ? fill(detail.song, storeSong) : detail.song;
+    if (!detail) return storeSong;
+    const shell: SongDto = {
       videoId: detail.videoId || videoId || "",
       title: detail.title || "Unknown track",
       artist: detail.artist ?? "",
@@ -79,12 +116,13 @@ export default function TrackPage() {
       album: detail.album ?? "",
       type: "song",
     };
-  }, [detail, videoId]);
+    return storeSong ? fill(shell, storeSong) : shell;
+  }, [detail, storeSong, videoId]);
   const isCurrent = Boolean(current && song && current.videoId === song.videoId);
   const saved = song ? savedIds.has(song.videoId) : false;
 
   /* Spotify-style header glow from the cover art. */
-  const ambientSource = detail?.artworkUrl || song?.artworkUrl || null;
+  const ambientSource = song?.artworkUrl || detail?.artworkUrl || null;
   const ambient = useAmbientColor(ambientSource);
   const heroStyle = useMemo(() => {
     const gradient = ambientGradient(ambient);
@@ -100,10 +138,18 @@ export default function TrackPage() {
     api
       .track(videoId ?? "")
       .then((d) => {
-        if (live) setDetail(d);
+        if (live) {
+          if (d.song) rememberSong(d.song);
+          setDetail(d);
+        }
       })
       .catch((err: unknown) => {
-        if (live) setError(err instanceof Error ? err.message : "Track could not be loaded");
+        if (!live) return;
+        /* With the player/cache fallback the page can still render fully —
+           only surface the error when there is truly nothing to show. */
+        if (!lookupSong(videoId) && current?.videoId !== videoId) {
+          setError(err instanceof Error ? err.message : "Track could not be loaded");
+        }
       })
       .finally(() => {
         if (live) setLoading(false);
@@ -191,17 +237,19 @@ export default function TrackPage() {
   };
 
   const meta: string[] = [];
-  if (detail?.artist) meta.push(detail.artist);
-  if (detail?.album) meta.push(detail.album);
+  if (song?.artist) meta.push(song.artist);
+  const albumLine = song?.album || detail?.album;
+  if (albumLine) meta.push(albumLine);
   if (detail?.year) meta.push(detail.year);
-  if (detail?.duration) meta.push(detail.duration);
+  const durationLine = song?.duration || detail?.duration;
+  if (durationLine) meta.push(durationLine);
 
   return (
     <div className="page">
-      <TopBar title={detail?.title ?? "Track"} />
+      <TopBar title={song?.title ?? detail?.title ?? "Track"} />
       <div className="page__hero" style={heroStyle} />
       <div className="page__body">
-        {loading && <p className="page__note">Opening the track…</p>}
+        {loading && !song && <p className="page__note">Opening the track…</p>}
         {error && (
           <>
             <p className="page__error">{error}</p>
@@ -210,18 +258,18 @@ export default function TrackPage() {
             </button>
           </>
         )}
-        {detail && song && (
+        {song && (
           <>
             <div className="trackhead">
-              {detail.artworkUrl ? (
-                <img className="trackhead__cover" src={detail.artworkUrl} alt={detail.title} />
+              {song.artworkUrl ? (
+                <img className="trackhead__cover" src={song.artworkUrl} alt={song.title} />
               ) : (
-                <MusicTile seed={detail.title} size={220} />
+                <MusicTile seed={song.title} size={220} />
               )}
               <div className="trackhead__meta">
                 <p className="trackhead__badge">Bài hát</p>
-                <h1 className="trackhead__title" title={detail.title}>
-                  {detail.title}
+                <h1 className="trackhead__title" title={song.title}>
+                  {song.title}
                 </h1>
                 <p className="trackhead__sub">{meta.join(" · ")}</p>
                 <div className="trackhead__actions">
