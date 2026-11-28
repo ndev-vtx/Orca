@@ -44,6 +44,11 @@ import {
 
 export const STALL_RECOVER_MS = 9000;
 export const RESUME_POSITION_MS = 3000;
+/* Seek-confirmation window: players apply seeks asynchronously, so progress
+ * ticks emitted within this window that still report the pre-seek position
+ * are suppressed instead of snapping the seek bar back. */
+const SEEK_CONFIRM_MS = 1500;
+const SEEK_TOLERANCE_MS = 600;
 /* How long the native (ExoPlayer) sink may take to actually start sounding
  * before the IFrame sink takes over for the current track. */
 const NATIVE_FUSE_MS = 7000;
@@ -206,8 +211,15 @@ export class AudioEngine {
    * playing after a seek on a paused player instead of staying silent. */
   private userWantsPlayback = false;
   /* Resume position waiting to be re-issued on the first PLAYING tick (iOS
-   * can silently drop a seekTo fired while the player is still loading). */
-  private pendingResumeMs = 0;
+   * can silently drop a seekTo fired while the player is paused or still
+   * loading). Null (not 0) means "nothing pending" so a seek to the very
+   * start is re-issued too. */
+  private pendingResumeMs: number | null = null;
+  /* A seek issued moments ago (see SEEK_CONFIRM_MS): while it is being
+   * applied, progress ticks reporting the old position are swallowed and the
+   * UI keeps showing the seeked target. */
+  private pendingSeekMs: number | null = null;
+  private pendingSeekAt = 0;
   private primed = false;
   /* Last progress values emitted — lets the poll timer skip redundant
    * emissions (identical position/duration would only burn store writes,
@@ -237,6 +249,22 @@ export class AudioEngine {
       this.nativePosMs = event.positionMs;
       this.nativeDurMs = event.durationMs;
       switch (event.state) {
+        case "progress": {
+          /* 500ms position ticks from the service's progressTick runnable —
+             the only source of live position on the native sink. Gate them
+             through the seek window so a just-issued seek is not reverted
+             by a tick that still carries the pre-seek position. */
+          if (!this.progressAllowed(event.positionMs)) break;
+          if (event.positionMs === this.lastPosMs && event.durationMs === this.lastDurMs) break;
+          this.lastPosMs = event.positionMs;
+          this.lastDurMs = event.durationMs;
+          this.emit({
+            type: "progress",
+            positionMs: event.positionMs,
+            durationMs: event.durationMs,
+          });
+          break;
+        }
         case "playing":
           this.nativePlaying = true;
           this.evictWatchdog();
@@ -293,6 +321,30 @@ export class AudioEngine {
     for (const listener of [...this.listeners]) listener(event);
   }
 
+  /* Record a seek about to be committed and seed the dedupe keys with the
+   * target so the confirmation tick (identical to what we emit right after)
+   * stays quiet instead of double-writing the store. */
+  private markSeek(targetMs: number, durationMs: number): void {
+    this.pendingSeekMs = targetMs;
+    this.pendingSeekAt = Date.now();
+    this.lastPosMs = targetMs;
+    this.lastDurMs = durationMs;
+  }
+
+  /* Gate for progress emissions: returns true when the tick may be emitted.
+   * While a seek is still being applied, ticks reporting the old position
+   * are suppressed; once the player lands within tolerance (or the confirm
+   * window expires) the gate opens and live position flows again. */
+  private progressAllowed(positionMs: number): boolean {
+    if (this.pendingSeekMs === null) return true;
+    const landed = Math.abs(positionMs - this.pendingSeekMs) <= SEEK_TOLERANCE_MS;
+    if (landed || Date.now() - this.pendingSeekAt > SEEK_CONFIRM_MS) {
+      this.pendingSeekMs = null;
+      return true;
+    }
+    return false;
+  }
+
   /* --------------------------------------------------- <audio> sink ---- */
 
   private wireAudio(): void {
@@ -307,17 +359,21 @@ export class AudioEngine {
     const audioActive = () => this.sink === "audio";
     this.el.addEventListener("timeupdate", () => {
       if (!audioActive()) return;
+      const positionMs = this.el.currentTime * 1000;
+      if (!this.progressAllowed(positionMs)) return;
       this.emit({
         type: "progress",
-        positionMs: this.el.currentTime * 1000,
+        positionMs,
         durationMs: this.el.duration * 1000 || 0,
       });
     });
     this.el.addEventListener("durationchange", () => {
       if (!audioActive()) return;
+      const positionMs = this.el.currentTime * 1000;
+      if (!this.progressAllowed(positionMs)) return;
       this.emit({
         type: "progress",
-        positionMs: this.el.currentTime * 1000,
+        positionMs,
         durationMs: this.el.duration * 1000 || 0,
       });
     });
@@ -461,6 +517,9 @@ export class AudioEngine {
       const durationMs = this.yt.getDuration() * 1000 || 0;
       /* Paused (or buffering at the same spot) → nothing changed → stay quiet. */
       if (positionMs === this.lastPosMs && durationMs === this.lastDurMs) return;
+      /* A just-issued seek must not be reverted by a tick still reporting
+         the pre-seek position (the player applies seeks asynchronously). */
+      if (!this.progressAllowed(positionMs)) return;
       this.lastPosMs = positionMs;
       this.lastDurMs = durationMs;
       this.emit({ type: "progress", positionMs, durationMs });
@@ -618,12 +677,16 @@ export class AudioEngine {
        * while the player is still loading — re-issue the saved resume
        * position on the first PLAYING tick if we did not land there.
        */
-      if (this.pendingResumeMs > 0 && this.yt) {
+      if (this.pendingResumeMs !== null && this.yt) {
+        const target = this.pendingResumeMs;
+        this.pendingResumeMs = null;
         const atMs = this.yt.getCurrentTime() * 1000;
-        if (Math.abs(atMs - this.pendingResumeMs) > 1500) {
-          this.yt.seekTo(this.pendingResumeMs / 1000, true);
+        if (Math.abs(atMs - target) > 1500) {
+          this.yt.seekTo(target / 1000, true);
+          /* Gate the next ticks so the re-issued seek is not reverted by a
+             progress tick still reporting the dropped seek's old spot. */
+          this.markSeek(target, this.yt.getDuration() * 1000 || 0);
         }
-        this.pendingResumeMs = 0;
       }
       this.playingReported = true;
       this.evictWatchdog();
@@ -645,6 +708,35 @@ export class AudioEngine {
     }
   }
 
+  /*
+   * Activate the IFrame sink for the current load and start the progress
+   * poll. Shared by every path that lands on the yt sink (plain web load and
+   * the native-first fallbacks on the APK) — the fallback paths previously
+   * forgot armProgressTimer(), leaving the APK without live position updates
+   * whenever the IFrame sink took over from ExoPlayer.
+   */
+  private activateYtSink(token: number, sourceId: string, videoId: string, resumeAtMs: number): void {
+    this.sink = "yt";
+    this.armProgressTimer();
+    this.ensureYtPlayer()
+      .then((player) => {
+        if (token !== this.loadToken || this.sink !== "yt" || this.sourceId !== sourceId) return;
+        player.loadVideoById(videoId);
+        if (resumeAtMs > RESUME_POSITION_MS) player.seekTo(resumeAtMs / 1000, true);
+      })
+      .catch(() => {
+        if (token !== this.loadToken || this.sourceId !== sourceId) return;
+        this.evictWatchdog();
+        this.emit({
+          type: "error",
+          sourceId: this.sourceId,
+          message: "the YouTube player could not be loaded in this browser",
+          signedUrlDead: false,
+          atMs: 0,
+        });
+      });
+  }
+
   loadTrack(videoId: string, sourceId: string, resumeAtMs: number): void {
     this.el.pause();
     this.el.removeAttribute("src");
@@ -661,7 +753,8 @@ export class AudioEngine {
     this.sourceId = sourceId;
     this.sourceUrl = null;
     this.savedPositionMs = resumeAtMs;
-    this.pendingResumeMs = resumeAtMs > RESUME_POSITION_MS ? resumeAtMs : 0;
+    this.pendingResumeMs = resumeAtMs > RESUME_POSITION_MS ? resumeAtMs : null;
+    this.pendingSeekMs = null;
     this.armWatchdog();
     /*
      * NATIVE SINK (Android APK): resolve a direct stream URL and play it in
@@ -682,14 +775,7 @@ export class AudioEngine {
         if (this.sink !== "native" || this.nativePlaying || this.sourceId !== sourceId) return;
         if (token !== this.loadToken) return;
         /* Fuse expired — instant IFrame fallback for this track. */
-        this.sink = "yt";
-        this.ensureYtPlayer()
-          .then((player) => {
-            if (token !== this.loadToken || this.sink !== "yt" || this.sourceId !== sourceId) return;
-            player.loadVideoById(videoId);
-            if (resumeAtMs > RESUME_POSITION_MS) player.seekTo(resumeAtMs / 1000, true);
-          })
-          .catch(() => undefined);
+        this.activateYtSink(token, sourceId, videoId, resumeAtMs);
       }, NATIVE_FUSE_MS);
       void api
         .resolveStream(videoId)
@@ -698,14 +784,7 @@ export class AudioEngine {
           if (res.error || !res.url) {
             /* No stream — drop the fuse and fall through to the IFrame. */
             this.clearNativeFuse();
-            this.sink = "yt";
-            this.ensureYtPlayer()
-              .then((player) => {
-                if (token !== this.loadToken || this.sink !== "yt" || this.sourceId !== sourceId) return;
-                player.loadVideoById(videoId);
-                if (resumeAtMs > RESUME_POSITION_MS) player.seekTo(resumeAtMs / 1000, true);
-              })
-              .catch(() => undefined);
+            this.activateYtSink(token, sourceId, videoId, resumeAtMs);
             return;
           }
           nativeAudioLoad(res.url, resumeAtMs);
@@ -713,38 +792,11 @@ export class AudioEngine {
         .catch(() => {
           if (token !== this.loadToken || this.sink !== "native" || this.sourceId !== sourceId) return;
           this.clearNativeFuse();
-          this.sink = "yt";
-          this.ensureYtPlayer()
-            .then((player) => {
-              if (token !== this.loadToken || this.sink !== "yt" || this.sourceId !== sourceId) return;
-              player.loadVideoById(videoId);
-              if (resumeAtMs > RESUME_POSITION_MS) player.seekTo(resumeAtMs / 1000, true);
-            })
-            .catch(() => undefined);
+          this.activateYtSink(token, sourceId, videoId, resumeAtMs);
         });
       return;
     }
-    this.sink = "yt";
-    this.armProgressTimer();
-    this.ensureYtPlayer()
-      .then((player) => {
-        if (token !== this.loadToken || this.sourceId !== sourceId) return;
-        player.loadVideoById(videoId);
-        if (resumeAtMs > RESUME_POSITION_MS) {
-          player.seekTo(resumeAtMs / 1000, true);
-        }
-      })
-      .catch(() => {
-        if (token !== this.loadToken || this.sourceId !== sourceId) return;
-        this.evictWatchdog();
-        this.emit({
-          type: "error",
-          sourceId: this.sourceId,
-          message: "the YouTube player could not be loaded in this browser",
-          signedUrlDead: false,
-          atMs: 0,
-        });
-      });
+    this.activateYtSink(token, sourceId, videoId, resumeAtMs);
   }
 
   /* ---------------------------------------------- URL (audio) sink ----- */
@@ -755,7 +807,8 @@ export class AudioEngine {
     this.sourceId = sourceId;
     this.sourceUrl = url;
     this.savedPositionMs = resumeAtMs;
-    this.pendingResumeMs = 0;
+    this.pendingResumeMs = null;
+    this.pendingSeekMs = null;
     this.generation += 1;
     this.playingReported = false;
     this.evictWatchdog();
@@ -863,7 +916,8 @@ export class AudioEngine {
     this.evictProgressTimer();
     this.clearNativeFuse();
     this.userWantsPlayback = false;
-    this.pendingResumeMs = 0;
+    this.pendingResumeMs = null;
+    this.pendingSeekMs = null;
     this.nativePlaying = false;
     if (this.sink === "native") nativeAudioStop();
     if (this.yt && this.ytReady) this.yt.stopVideo();
@@ -880,6 +934,7 @@ export class AudioEngine {
       const target = Math.max(0, duration ? Math.min(positionMs, duration - 250) : positionMs);
       nativeAudioSeek(target);
       this.nativePosMs = target;
+      this.markSeek(target, duration);
       this.emit({ type: "progress", positionMs: target, durationMs: duration });
       return;
     }
@@ -889,18 +944,31 @@ export class AudioEngine {
       const target = Math.max(0, duration ? Math.min(positionMs, duration - 250) : positionMs);
       this.yt.seekTo(target / 1000, true);
       /*
+       * iOS (and some Android WebView builds) silently drop seeks issued
+       * while the player is paused or still loading — remember the target so
+       * the next PLAYING tick re-issues it. Null (not 0) means "nothing
+       * pending" so a seek back to the very start is re-issued too.
+       */
+      if (this.yt.getPlayerState() !== YT_STATE_PLAYING) {
+        this.pendingResumeMs = target;
+      } else {
+        this.pendingResumeMs = null;
+      }
+      /*
        * iOS ignores seeks on a paused player — if the user asked for
        * playback, nudge the player back to playing after the seek.
        */
       if (this.userWantsPlayback && this.yt.getPlayerState() !== YT_STATE_PLAYING) {
         this.yt.playVideo();
       }
+      this.markSeek(target, duration);
       this.emit({ type: "progress", positionMs: target, durationMs: duration });
       return;
     }
     const duration = this.el.duration * 1000 || 0;
     const target = Math.max(0, duration ? Math.min(positionMs, duration - 250) : positionMs);
     this.el.currentTime = target / 1000;
+    this.markSeek(target, duration);
     this.emit({ type: "progress", positionMs: target, durationMs: duration });
   }
 

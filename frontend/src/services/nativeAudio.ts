@@ -11,7 +11,13 @@
 
 import { Capacitor } from "@capacitor/core";
 
-export type NativeAudioState = "playing" | "paused" | "ended" | "buffering" | "error";
+export type NativeAudioState =
+  | "playing"
+  | "paused"
+  | "ended"
+  | "buffering"
+  | "progress"
+  | "error";
 
 export interface NativeAudioEvent {
   state: NativeAudioState;
@@ -100,7 +106,10 @@ export function onNativeAudioEvent(
       if (
         parsed &&
         typeof parsed.state === "string" &&
-        ["playing", "paused", "ended", "buffering", "error"].includes(parsed.state)
+        /* "progress" ticks (500ms position updates from the service's
+         * progressTick runnable) MUST be forwarded — without them the APK's
+         * seek bar, playback position and synced lyrics never advance. */
+        ["playing", "paused", "ended", "buffering", "progress", "error"].includes(parsed.state)
       ) {
         handler({
           state: parsed.state as NativeAudioState,
