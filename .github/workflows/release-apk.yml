@@ -50,11 +50,13 @@ jobs:
             frontend/package-lock.json
             package-lock.json
 
-      - name: Set up Java 17 (Temurin)
+      # Capacitor 7's capacitor-android module compiles with source release
+      # 21 — Java 21 is required (Java 17 fails with "invalid source release").
+      - name: Set up Java 21 (Temurin)
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
           cache: gradle
 
       # ubuntu-latest ships the Android SDK preinstalled (ANDROID_HOME set,
