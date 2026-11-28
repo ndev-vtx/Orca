@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, type AlbumResponse } from "../services/api";
+import { ambientGradient, useAmbientColor } from "../utils/ambient";
 import TopBar from "../components/TopBar";
 import { PlayIcon } from "../components/Icons";
 import { MusicTile } from "../components/Shared";
@@ -37,10 +38,17 @@ export default function AlbumPage() {
 
   const tracks = album?.tracks ?? [];
 
+  /* Spotify-style header glow from the album cover. */
+  const ambient = useAmbientColor(album?.cover ?? null);
+  const heroStyle = useMemo(() => {
+    const gradient = ambientGradient(ambient);
+    return gradient ? { background: gradient } : undefined;
+  }, [ambient]);
+
   return (
     <div className="page">
       <TopBar title={album?.title ?? "Album"} />
-      <div className="page__hero" />
+      <div className="page__hero" style={heroStyle} />
       <div className="page__body">
         {loading && <p className="page__note">Opening the album…</p>}
         {error && <p className="page__error">{error}</p>}

@@ -25,13 +25,25 @@ export function useKeyboardShortcuts(): void {
           e.preventDefault();
           store.toggle();
           break;
+        case "/":
+          e.preventDefault();
+          focusSearch();
+          break;
         case "ArrowRight":
           e.preventDefault();
-          store.seek(store.positionMs + 5000);
+          if (e.shiftKey) {
+            store.next(true);
+          } else {
+            store.seek(store.positionMs + 5000);
+          }
           break;
         case "ArrowLeft":
           e.preventDefault();
-          store.seek(Math.max(0, store.positionMs - 5000));
+          if (e.shiftKey) {
+            store.previous();
+          } else {
+            store.seek(Math.max(0, store.positionMs - 5000));
+          }
           break;
         case "ArrowUp":
           e.preventDefault();
@@ -64,4 +76,33 @@ export function useKeyboardShortcuts(): void {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+}
+
+/*
+ * `/` jumps straight to the Search input (Spotify behaviour): navigates to
+ * /search when needed (via the router bridge in App.tsx), then focuses +
+ * selects the field once it exists.
+ */
+function focusSearch(): void {
+  const input = document.querySelector<HTMLInputElement>(".searchbar input");
+  if (input) {
+    input.focus();
+    input.select();
+    return;
+  }
+  type Bridge = { __orcaNavigate?: (path: string) => void };
+  (window as unknown as Bridge).__orcaNavigate?.("/search");
+  /* The SearchPage mounts asynchronously — retry on the next frames. */
+  let tries = 0;
+  const retry = (): void => {
+    const el = document.querySelector<HTMLInputElement>(".searchbar input");
+    if (el) {
+      el.focus();
+      el.select();
+    } else if (tries < 20) {
+      tries += 1;
+      requestAnimationFrame(retry);
+    }
+  };
+  requestAnimationFrame(retry);
 }

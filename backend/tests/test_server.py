@@ -272,3 +272,41 @@ def test_track_detail_survives_catalog_exception(client):
         assert body["title"] == "Unknown track"
     finally:
         client.app.dependency_overrides.pop(srv.deps["catalog"], None)
+
+
+def test_playlist_reorder_persists_custom_order(client):
+    """PUT .../tracks/order repositions tracks; ownership is enforced."""
+    from orca.catalog import CatalogSource
+
+    class StaticApi:
+        def search(self, *_a, **_k):
+            return []
+
+        def get_song(self, _vid):
+            return {}
+
+    broken = CatalogSource.__new__(CatalogSource)
+    broken.api = StaticApi()
+    client.app.dependency_overrides[srv.deps["catalog"]] = lambda: broken
+    try:
+        pid = client.post("/api/library/playlists", json={"name": "Reorder", "sourceType": "custom"}).json()["id"]
+        songs = [
+            {"videoId": f"v{i}", "title": f"T{i}", "artist": "A", "duration": "3:00",
+             "artworkUrl": "", "type": "song"}
+            for i in range(3)
+        ]
+        r = client.post(f"/api/library/playlists/{pid}/tracks", json={"songs": songs})
+        assert r.status_code == 200
+
+        # Move v2 to the front: order becomes [v2, v0, v1]
+        r = client.put(f"/api/library/playlists/{pid}/tracks/order", json={"order": ["v2", "v0", "v1"]})
+        assert r.status_code == 200
+        detail = client.get(f"/api/library/playlists/{pid}").json()
+        got = [t["videoId"] for t in detail["tracks"]]
+        assert got == ["v2", "v0", "v1"], got
+
+        # Unknown playlist id → 404
+        r = client.put("/api/library/playlists/999999/tracks/order", json={"order": ["v0"]})
+        assert r.status_code == 404
+    finally:
+        client.app.dependency_overrides.pop(srv.deps["catalog"], None)

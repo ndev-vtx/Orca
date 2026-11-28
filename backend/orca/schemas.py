@@ -33,6 +33,12 @@ class PlaylistTrackDto(SongDto):
     added_at: str = Field(default="", alias="addedAt")
 
 
+class TrackOrderRequest(BaseModel):
+    """Body for the playlist drag-and-drop reorder endpoint."""
+
+    order: List[str] = Field(default_factory=list)
+
+
 class ResolveRequest(BaseModel):
     video_id: str = Field(alias="videoId", min_length=1)
     model_config = {"populate_by_name": True}

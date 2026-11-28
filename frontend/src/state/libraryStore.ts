@@ -28,6 +28,8 @@ interface LibraryState {
   deletePlaylist: (id: number) => Promise<void>;
   renamePlaylist: (id: number, name: string) => Promise<void>;
   removeFromPlaylist: (id: number, videoId: string) => Promise<void>;
+  /** Persist a drag-and-drop custom order for a playlist's tracks. */
+  reorderPlaylist: (id: number, order: string[]) => Promise<void>;
   /** Resolves with the number of tracks that actually landed (duplicates skipped). */
   addTracksToPlaylist: (id: number, songs: SongDto[]) => Promise<number>;
 }
@@ -150,6 +152,12 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   removeFromPlaylist: async (id, videoId) => {
     await api.removeFromPlaylist(id, videoId);
+    await get().refreshPlaylists();
+    set({ playlistVersion: get().playlistVersion + 1 });
+  },
+
+  reorderPlaylist: async (id, order) => {
+    await api.reorderPlaylistTracks(id, order);
     await get().refreshPlaylists();
     set({ playlistVersion: get().playlistVersion + 1 });
   },

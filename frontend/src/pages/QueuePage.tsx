@@ -1,3 +1,4 @@
+import { useRef, useState } from "react";
 import TopBar from "../components/TopBar";
 import { MusicTile } from "../components/Shared";
 import { CloseIcon, PauseIcon, PlayIcon } from "../components/Icons";
@@ -10,6 +11,46 @@ export default function QueuePage() {
   const playing = usePlayerStore((s) => s.playing);
   const playAt = usePlayerStore((s) => s.playAt);
   const removeFromQueue = usePlayerStore((s) => s.removeFromQueue);
+  const moveInQueue = usePlayerStore((s) => s.moveInQueue);
+
+  /* Drag-and-drop reorder of upcoming tracks (desktop). */
+  const dragFrom = useRef<number | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null);
+  const dropRow = (from: number, to: number) => {
+    moveInQueue(from, to);
+    dragFrom.current = null;
+    setDragOver(null);
+  };
+  const dragProps = (absoluteIndex: number) => ({
+    draggable: true,
+    onDragStart: (e: React.DragEvent) => {
+      dragFrom.current = absoluteIndex;
+      e.dataTransfer.effectAllowed = "move";
+      try {
+        e.dataTransfer.setData("text/plain", String(absoluteIndex));
+      } catch {
+        /* some engines restrict setData during dragstart */
+      }
+    },
+    onDragOver: (e: React.DragEvent) => {
+      if (dragFrom.current === null) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      if (dragOver !== absoluteIndex) setDragOver(absoluteIndex);
+    },
+    onDragLeave: () => {
+      if (dragOver === absoluteIndex) setDragOver(null);
+    },
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault();
+      if (dragFrom.current !== null) dropRow(dragFrom.current, absoluteIndex);
+    },
+    onDragEnd: () => {
+      dragFrom.current = null;
+      setDragOver(null);
+    },
+    dropActive: dragOver === absoluteIndex && dragFrom.current !== null,
+  });
   const shuffleUpcoming = usePlayerStore((s) => s.shuffleUpcoming);
   const autoQueue = usePlayerStore((s) => s.autoQueue);
   const setAutoQueue = usePlayerStore((s) => s.setAutoQueue);
@@ -92,6 +133,7 @@ export default function QueuePage() {
                   index={i + currentIdx + 1}
                   onPlay={playAt}
                   onRemove={() => removeFromQueue(i + currentIdx + 1)}
+                  {...dragProps(i + currentIdx + 1)}
                 />
               ))}
             </div>
@@ -101,7 +143,13 @@ export default function QueuePage() {
         {currentIdx < 0 && queue.length > 0 && (
           <div className="tracktable">
             {queue.map((t, i) => (
-              <QueueRow key={`all-${t.videoId}-${i}`} track={t} index={i} onPlay={playAt} />
+              <QueueRow
+                key={`all-${t.videoId}-${i}`}
+                track={t}
+                index={i}
+                onPlay={playAt}
+                {...dragProps(i)}
+              />
             ))}
           </div>
         )}
@@ -116,18 +164,38 @@ function QueueRow({
   onPlay,
   onRemove,
   showState = false,
+  draggable,
+  onDragStart,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onDragEnd,
+  dropActive,
 }: {
   track: { videoId: string; title: string; artist: string; duration: string; artworkUrl: string };
   index: number;
   onPlay: (index: number) => void;
   onRemove?: () => void;
   showState?: boolean;
+  draggable?: boolean;
+  onDragStart?: (e: React.DragEvent) => void;
+  onDragOver?: (e: React.DragEvent) => void;
+  onDragLeave?: () => void;
+  onDrop?: (e: React.DragEvent) => void;
+  onDragEnd?: () => void;
+  dropActive?: boolean;
 }) {
   return (
     <div
-      className="tracktable__row"
+      className={`tracktable__row${dropActive ? " tracktable__row--drop" : ""}`}
       role="button"
       tabIndex={0}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
       onClick={() => onPlay(index)}
       onKeyDown={(e) => {
         if (e.key === "Enter") onPlay(index);

@@ -22,6 +22,7 @@ import { MusicTile } from "../components/Shared";
 import { useLibraryStore } from "../state/libraryStore";
 import { usePlayerStore } from "../state/player";
 import { useUiStore } from "../state/uiStore";
+import { ambientGradient, useAmbientColor } from "../utils/ambient";
 
 type SortKey = "custom" | "title" | "artist" | "album" | "recent";
 
@@ -81,12 +82,33 @@ export default function PlaylistPage() {
   const savedIds = useLibraryStore((s) => s.savedIds);
   const deletePlaylist = useLibraryStore((s) => s.deletePlaylist);
   const renamePlaylist = useLibraryStore((s) => s.renamePlaylist);
+  const reorderPlaylist = useLibraryStore((s) => s.reorderPlaylist);
   const playlistVersion = useLibraryStore((s) => s.playlistVersion);
   const openMenu = useUiStore((s) => s.openMenu);
   const play = usePlayerStore((s) => s.play);
   const setShuffle = usePlayerStore((s) => s.setShuffle);
   const currentId = usePlayerStore((s) => s.current?.videoId ?? null);
   const playing = usePlayerStore((s) => s.playing);
+
+  /* Drag-and-drop custom reorder (desktop, custom order, unfiltered view). */
+  const dragFrom = useRef<number | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null);
+  const canReorder = sortKey === "custom" && query.trim() === "";
+
+  const commitReorder = (from: number, to: number) => {
+    if (!detail || from === to || from < 0 || to < 0 || from >= detail.tracks.length || to >= detail.tracks.length) {
+      return;
+    }
+    const next = [...detail.tracks];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    /* Optimistic: repaint instantly, then persist; refetch reconciles. */
+    setDetail({ ...detail, tracks: next });
+    reorderPlaylist(playlistId, next.map((t) => t.videoId)).catch(() => {
+      /* Re-fetch the server's truth if the persist failed. */
+      api.playlist(playlistId).then((d) => setDetail(d)).catch(() => undefined);
+    });
+  };
 
   useEffect(() => {
     if (!Number.isFinite(playlistId)) return;
@@ -150,6 +172,14 @@ export default function PlaylistPage() {
     ? detail.tracks.reduce((acc, t) => acc + durationSeconds(t.duration), 0)
     : 0;
   const arts = detail ? collageArts(detail.tracks) : [];
+
+  /* Spotify-style header glow from the collage lead artwork. */
+  const ambient = useAmbientColor(arts[0] ?? null);
+  const heroStyle = useMemo(() => {
+    const gradient = ambientGradient(ambient);
+    return gradient ? { background: gradient } : undefined;
+  }, [ambient]);
+
   const isPlayingHere = !!(
     detail &&
     playing &&
@@ -209,7 +239,7 @@ export default function PlaylistPage() {
   return (
     <div className="page">
       <TopBar title={detail?.name ?? "Playlist"} />
-      <div className="page__hero page__hero--tall plhead__hero" />
+      <div className="page__hero page__hero--tall plhead__hero" style={heroStyle} />
       <div className="page__body">
         <div className="page__header">
           {arts.length >= 4 ? (
@@ -343,9 +373,40 @@ export default function PlaylistPage() {
                 return (
                   <div
                     key={`${t.videoId}-${i}`}
-                    className={`tracktable__row${active ? " tracktable__row--active" : ""}`}
+                    className={`tracktable__row${active ? " tracktable__row--active" : ""}${
+                      canReorder && dragOver === i ? " tracktable__row--drop" : ""
+                    }`}
                     role="button"
                     tabIndex={0}
+                    draggable={canReorder}
+                    onDragStart={(e) => {
+                      dragFrom.current = i;
+                      e.dataTransfer.effectAllowed = "move";
+                      try {
+                        e.dataTransfer.setData("text/plain", t.videoId);
+                      } catch {
+                        /* some engines restrict setData during dragstart */
+                      }
+                    }}
+                    onDragOver={(e) => {
+                      if (!canReorder || dragFrom.current === null) return;
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
+                      if (dragOver !== i) setDragOver(i);
+                    }}
+                    onDragLeave={() => {
+                      if (dragOver === i) setDragOver(null);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (canReorder && dragFrom.current !== null) commitReorder(dragFrom.current, i);
+                      dragFrom.current = null;
+                      setDragOver(null);
+                    }}
+                    onDragEnd={() => {
+                      dragFrom.current = null;
+                      setDragOver(null);
+                    }}
                     onClick={() => {
                       navigate(`/track/${encodeURIComponent(t.videoId)}`);
                       playRow(i);

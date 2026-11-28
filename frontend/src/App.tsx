@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes, useNavigate } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
 import NowPlayingBar from "./components/NowPlayingBar";
 import LyricsPanel from "./components/LyricsPanel";
@@ -51,6 +51,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <RouterBridge />
       <div className={`orca-app${isMobile ? " orca-app--mobile" : ""}`}>
         <div className="orca-app__panes">
           {!isMobile && <Sidebar />}
@@ -78,4 +79,19 @@ export default function App() {
       </div>
     </BrowserRouter>
   );
+}
+
+/*
+ * Exposes the router's navigate to non-React callers that live outside the
+ * router context (keyboard shortcuts: "/" jumps to Search).
+ */
+function RouterBridge(): null {
+  const navigate = useNavigate();
+  useEffect(() => {
+    (window as unknown as { __orcaNavigate?: (path: string) => void }).__orcaNavigate = navigate;
+    return () => {
+      delete (window as unknown as { __orcaNavigate?: (path: string) => void }).__orcaNavigate;
+    };
+  }, [navigate]);
+  return null;
 }

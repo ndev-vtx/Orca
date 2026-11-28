@@ -65,6 +65,14 @@ function patch<T>(path: string, body: unknown): Promise<T> {
   });
 }
 
+function put<T>(path: string, body: unknown): Promise<T> {
+  return request<T>(path, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 export interface ResolveStreamResult {
   url: string;
   error: string;
@@ -145,6 +153,9 @@ export const api = {
     del<Record<string, never>>(
       `/api/library/playlists/${id}/tracks/${encodeURIComponent(videoId)}`,
     ),
+
+  reorderPlaylistTracks: (id: number, order: string[]) =>
+    put<{ ok: boolean }>(`/api/library/playlists/${id}/tracks/order`, { order }),
 
   importPlaylistUrl: (url: string) =>
     post<ImportResult>(

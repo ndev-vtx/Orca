@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../services/api";
+import { ambientGradient, useAmbientColor } from "../utils/ambient";
 import type { LyricLine, SongDto, TrackDetail } from "../types";
 import TopBar from "../components/TopBar";
 import { MusicTile } from "../components/Shared";
@@ -81,6 +82,14 @@ export default function TrackPage() {
   }, [detail, videoId]);
   const isCurrent = Boolean(current && song && current.videoId === song.videoId);
   const saved = song ? savedIds.has(song.videoId) : false;
+
+  /* Spotify-style header glow from the cover art. */
+  const ambientSource = detail?.artworkUrl || song?.artworkUrl || null;
+  const ambient = useAmbientColor(ambientSource);
+  const heroStyle = useMemo(() => {
+    const gradient = ambientGradient(ambient);
+    return gradient ? { background: gradient } : undefined;
+  }, [ambient]);
 
   useEffect(() => {
     let live = true;
@@ -190,7 +199,7 @@ export default function TrackPage() {
   return (
     <div className="page">
       <TopBar title={detail?.title ?? "Track"} />
-      <div className="page__hero" />
+      <div className="page__hero" style={heroStyle} />
       <div className="page__body">
         {loading && <p className="page__note">Opening the track…</p>}
         {error && (

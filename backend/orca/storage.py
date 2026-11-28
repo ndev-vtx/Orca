@@ -595,6 +595,40 @@ class OrcaStorage:
                     (idx, r[0]),
                 )
             conn.commit()
+
+    def reorder_playlist_tracks(self, playlist_id: int, ordered_ids: List[str], scope: str = "anon") -> bool:
+        """
+        Persist a drag-and-drop custom order. `ordered_ids` is the full track
+        list in its new order (unknown / missing ids keep their relative
+        order at the end). Returns True when the playlist exists and is owned
+        by `scope`.
+        """
+        if not ordered_ids:
+            return False
+        with self._connection() as conn:
+            owned = conn.execute(
+                "SELECT 1 FROM playlists WHERE id = ? AND owner = ?;",
+                (playlist_id, scope),
+            ).fetchone()
+            if owned is None:
+                return False
+            rows = conn.execute(
+                "SELECT video_id FROM playlist_tracks WHERE playlist_id = ? ORDER BY position ASC;",
+                (playlist_id,),
+            ).fetchall()
+            current = [r[0] for r in rows]
+            # Keep any track the client omitted at the end, in current order.
+            wanted = [v for v in ordered_ids if v in set(current)]
+            wanted += [v for v in current if v not in set(wanted)]
+            if wanted == current:
+                return True
+            for idx, video_id in enumerate(wanted):
+                conn.execute(
+                    "UPDATE playlist_tracks SET position = ? WHERE playlist_id = ? AND video_id = ?;",
+                    (idx, playlist_id, video_id),
+                )
+            conn.commit()
+            return True
     # --------------------------------------------------------------------- users
     def create_user(
         self,

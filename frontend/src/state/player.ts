@@ -138,6 +138,8 @@ interface PlaybackState {
   playAt(index: number): void;
   addToQueue(song: SongDto): void;
   removeFromQueue(index: number): void;
+  /** Drag-and-drop: move an upcoming track from index `from` to `to` (absolute queue indices). */
+  moveInQueue(from: number, to: number): void;
   clearQueue(): void;
   retryCurrent(): void;
   toggle(): void;
@@ -567,6 +569,26 @@ export const usePlayerStore = create<PlaybackState>((set, get) => {
       const { queue, cursor } = get();
       if (index <= cursor || index >= queue.length) return; // played + current stay
       set({ queue: queue.filter((_, i) => i !== index) });
+      scheduleSessionSave();
+    },
+
+    moveInQueue: (from, to) => {
+      const { queue, cursor } = get();
+      if (
+        !Number.isInteger(from) ||
+        !Number.isInteger(to) ||
+        from === to ||
+        from <= cursor ||
+        to <= cursor ||
+        from >= queue.length ||
+        to >= queue.length
+      ) {
+        return; // played tracks and the current track stay put
+      }
+      const next = [...queue];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      set({ queue: next });
       scheduleSessionSave();
     },
 

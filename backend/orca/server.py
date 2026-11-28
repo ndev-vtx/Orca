@@ -58,6 +58,7 @@ from .schemas import (
     HealthResponse,
     HistoryResponse,
     HomeResponse,
+    TrackOrderRequest,
     HomeSection,
     ImportRequest,
     ImportResponse,
@@ -906,6 +907,25 @@ def create_app() -> FastAPI:
         scope: str = Depends(deps["scope"]),
     ) -> BroadcastResponse:
         storage.remove_track_from_playlist(playlist_id, video_id, scope=scope)
+        manager.broadcast_threadsafe(
+            {"type": "playlist_tracks_changed", "payload": {"id": playlist_id}}
+        )
+        return BroadcastResponse(ok=True)
+
+    @app.put(
+        "/api/library/playlists/{playlist_id}/tracks/order",
+        response_model=BroadcastResponse,
+    )
+    def reorder_tracks(
+        playlist_id: int,
+        body: TrackOrderRequest,
+        storage: OrcaStorage = Depends(deps["storage"]),
+        scope: str = Depends(deps["scope"]),
+    ) -> BroadcastResponse:
+        """Persist a drag-and-drop custom order for a playlist's tracks."""
+        ok = storage.reorder_playlist_tracks(playlist_id, body.order, scope=scope)
+        if not ok:
+            raise HTTPException(status_code=404, detail="playlist not found")
         manager.broadcast_threadsafe(
             {"type": "playlist_tracks_changed", "payload": {"id": playlist_id}}
         )

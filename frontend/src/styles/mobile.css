@@ -13,10 +13,10 @@
   border-radius: 0;
   margin: 0;
   /*
-   * Room for the compact Now Playing bar (88px, two rows incl. seek) +
-   * mobile tab nav (62px) + home-indicator safe area.
+   * Room for the compact Now Playing bar (82px: top-edge seek strip +
+   * controls row) + mobile tab nav (62px) + home-indicator safe area.
    */
-  padding-bottom: calc(88px + 62px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(82px + 62px + env(safe-area-inset-bottom, 0px));
 }
 
 /* --------------------------------------------------- mobile tab bar ---- */
@@ -64,25 +64,26 @@
   bottom: calc(62px + env(safe-area-inset-bottom, 0px));
   left: 0;
   right: 0;
-  height: 88px;
+  height: 82px;
   padding-bottom: 0;
   border-radius: 0;
   border: none;
   border-top: 1px solid var(--orca-border);
-  padding: 6px 12px;
+  padding: 4px 12px 8px;
   padding-left: max(12px, env(safe-area-inset-left, 0px));
   padding-right: max(12px, env(safe-area-inset-right, 0px));
   /*
-   * Two rows: cover + transport controls on top, full-width scrubbable
-   * seek timeline (with current time / duration) underneath — the seek bar
-   * is never hidden on mobile.
+   * Spotify-mobile layout: a thin, interactive seek strip hugging the very
+   * top edge of the mini-player (live progress at a glance, tappable and
+   * draggable), with cover + transport controls underneath — plus the
+   * add-to-playlist button in the left column. Never hidden on mobile.
    */
   grid-template-columns: 1fr auto;
-  grid-template-rows: 1fr auto;
+  grid-template-rows: auto 1fr;
   grid-template-areas:
-    "left controls"
-    "seek seek";
-  row-gap: 4px;
+    "seek seek"
+    "left controls";
+  row-gap: 3px;
   align-items: center;
 }
 
@@ -104,16 +105,25 @@
   grid-area: controls;
 }
 
+/* Thin full-bleed progress strip along the mini-player's top edge. */
 .orca-app--mobile .bar__seek {
   display: flex;
   grid-area: seek;
   max-width: none;
   gap: 8px;
+  align-items: center;
+  height: 16px;
+  margin: -4px -12px 0; /* reach the bar's true top edge */
+  padding: 0 10px;
 }
 
 .orca-app--mobile .bar__time {
-  font-size: 10px;
-  min-width: 30px;
+  font-size: 9px;
+  min-width: 26px;
+}
+
+.orca-app--mobile .bar__track {
+  height: 3px;
 }
 
 .orca-app--mobile .bar__cover {

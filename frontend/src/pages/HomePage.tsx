@@ -55,6 +55,7 @@ const REGION_LABEL: Record<string, string> = {
 export default function HomePage() {
   const [sections, setSections] = useState<HomeSection[]>([]);
   const [billboard, setBillboard] = useState<SongDto[]>([]);
+  const [recent, setRecent] = useState<SongDto[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
@@ -98,6 +99,22 @@ export default function HomePage() {
       live = false;
     };
   }, [billboardPref]);
+
+  /* Continue listening — the user's own history (best-effort). */
+  useEffect(() => {
+    let live = true;
+    api
+      .history(14)
+      .then((res) => {
+        if (live) setRecent(res.history.slice(0, 14));
+      })
+      .catch(() => {
+        /* history is best-effort — the shelf simply stays hidden */
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
@@ -180,6 +197,9 @@ export default function HomePage() {
               ))}
             </div>
           </section>
+        )}
+        {recent.length > 0 && (
+          <SectionRow title="Continue listening" tracks={recent} context="home:recent" />
         )}
         {billboard.length > 0 && (
           <SectionRow
