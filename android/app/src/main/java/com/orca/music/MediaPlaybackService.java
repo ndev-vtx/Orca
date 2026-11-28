@@ -137,7 +137,7 @@ public class MediaPlaybackService extends Service {
             .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, "Orca");
         session.setMetadata(meta.build());
 
-        long state = "true".equals(playing)
+        final int state = "true".equals(playing)
             ? PlaybackStateCompat.STATE_PLAYING
             : PlaybackStateCompat.STATE_PAUSED;
         session.setPlaybackState(new PlaybackStateCompat.Builder()
