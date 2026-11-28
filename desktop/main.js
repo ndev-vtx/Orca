@@ -100,7 +100,6 @@ function createWindow() {
 
   /* Keep the Orca title synced with the active track (web app sets
    * document.title per track — mirror it onto the window). */
-  win.on("page-title-updated", (event) => event.preventDefault());
   win.webContents.on("page-title-updated", (event, title) => {
     event.preventDefault();
     if (win && !win.isDestroyed()) win.setTitle(title.startsWith("Orca") ? title : `Orca — ${title}`);

@@ -18,12 +18,12 @@ import { useLibraryStore } from "../state/libraryStore";
 import { useUiStore } from "../state/uiStore";
 import { lookupSong, rememberSong } from "../state/trackCache";
 
-/** Session + localStorage lyric cache so revisiting a track never re-fetches. */
-
-/**
+/*
  * Rich track detail view: large cover, "Bài hát" badge, metadata, play /
  * add-to-playlist / save / menu actions, the lyrics section right below and
- * "Đề xuất" (suggestions from the song radio) underneath that.
+ * "Đề xuất" (suggestions from the song radio) underneath that. Lyrics go
+ * through the shared two-tier cache (state/lyricsCache.ts) so revisiting a
+ * track never re-fetches.
  */
 export default function TrackPage() {
   const { videoId } = useParams();

@@ -90,11 +90,13 @@ export default function AuthBridgePage() {
     setPhase("loading");
     setMessage("");
 
-    /* Hard cap on the whole setup flow — never hang on "Đang tải…". */
+    /* Hard cap on the setup flow — never hang on "Đang tải…". Only fires
+       while still loading; an already-rendered sign-in button is a working
+       state and must never be torn down by the timeout. */
     const overall = window.setTimeout(() => {
       if (!cancelled) {
         setPhase((prev) => {
-          if (prev === "loading" || prev === "ready") {
+          if (prev === "loading") {
             setMessage("Không thể tải trang đăng nhập — hãy thử lại.");
             return "error";
           }
