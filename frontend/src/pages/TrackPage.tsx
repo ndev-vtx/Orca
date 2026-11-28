@@ -62,20 +62,23 @@ export default function TrackPage() {
    * videoDetails) and then ships song: null. The IFrame player does not care
    * about that flag, so synthesize a playable SongDto from the detail shell
    * instead of rendering nothing — the track page always opens.
+   * The fallback object MUST be memoized: TrackPage re-renders twice a second
+   * with live playback position, and a fresh object here would re-run the
+   * lyrics effect (and re-fetch) on every render.
    */
-  const song: SongDto | null =
-    detail?.song ??
-    (detail
-      ? {
-          videoId: detail.videoId || videoId || "",
-          title: detail.title || "Unknown track",
-          artist: detail.artist ?? "",
-          duration: detail.duration ?? "",
-          artworkUrl: detail.artworkUrl ?? "",
-          album: detail.album ?? "",
-          type: "song",
-        }
-      : null);
+  const song: SongDto | null = useMemo(() => {
+    if (detail?.song) return detail.song;
+    if (!detail) return null;
+    return {
+      videoId: detail.videoId || videoId || "",
+      title: detail.title || "Unknown track",
+      artist: detail.artist ?? "",
+      duration: detail.duration ?? "",
+      artworkUrl: detail.artworkUrl ?? "",
+      album: detail.album ?? "",
+      type: "song",
+    };
+  }, [detail, videoId]);
   const isCurrent = Boolean(current && song && current.videoId === song.videoId);
   const saved = song ? savedIds.has(song.videoId) : false;
 

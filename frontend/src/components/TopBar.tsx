@@ -14,9 +14,23 @@ export default function TopBar({ title, backgroundColor }: TopBarProps) {
   useEffect(() => {
     const main = document.querySelector(".orca-main") as HTMLElement | null;
     if (!main) return;
-    const onScroll = () => setScrolled(main.scrollTop);
+    /*
+     * Scroll fires far more often than React should re-render here — throttle
+     * to one update per animation frame.
+     */
+    let raf = 0;
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        setScrolled(main.scrollTop);
+      });
+    };
     main.addEventListener("scroll", onScroll, { passive: true });
-    return () => main.removeEventListener("scroll", onScroll);
+    return () => {
+      main.removeEventListener("scroll", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
   }, []);
 
   const opacity = Math.min(1, scrolled / 160);

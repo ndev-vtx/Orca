@@ -226,3 +226,49 @@ def test_ws_hello_and_pong(client):
         assert hello["payload"]["app"] == "Orca"
         ws.send_json({"type": "ping"})
         assert ws.receive_json()["type"] == "pong"
+
+
+def test_track_detail_never_returns_null_song(client):
+    """
+    A bot-flagged get_song payload (no videoDetails) must still produce a
+    usable song so the track page opens instead of rendering an error.
+    """
+    from orca.catalog import CatalogSource
+
+    class BotFlaggedApi:
+        def get_song(self, video_id):
+            return {"playabilityStatus": {"status": "LOGIN_REQUIRED"}}
+
+    broken = CatalogSource.__new__(CatalogSource)
+    broken.api = BotFlaggedApi()
+    client.app.dependency_overrides[srv.deps["catalog"]] = lambda: broken
+    try:
+        r = client.get("/api/track/kJQP7kiw5Fk")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["song"] is not None
+        assert body["song"]["videoId"] == "kJQP7kiw5Fk"
+        assert body["song"]["artworkUrl"] == "https://i.ytimg.com/vi/kJQP7kiw5Fk/hqdefault.jpg"
+    finally:
+        client.app.dependency_overrides.pop(srv.deps["catalog"], None)
+
+
+def test_track_detail_survives_catalog_exception(client):
+    """Even a hard catalog failure returns a minimal playable detail (no 404)."""
+    from orca.catalog import CatalogSource
+
+    class ExplodingApi:
+        def get_song(self, video_id):
+            raise RuntimeError("network down")
+
+    broken = CatalogSource.__new__(CatalogSource)
+    broken.api = ExplodingApi()
+    client.app.dependency_overrides[srv.deps["catalog"]] = lambda: broken
+    try:
+        r = client.get("/api/track/abc123XYZ_-")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["song"]["videoId"] == "abc123XYZ_-"
+        assert body["title"] == "Unknown track"
+    finally:
+        client.app.dependency_overrides.pop(srv.deps["catalog"], None)

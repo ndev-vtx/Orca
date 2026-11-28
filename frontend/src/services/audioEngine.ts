@@ -182,6 +182,15 @@ export class AudioEngine {
    * can silently drop a seekTo fired while the player is still loading). */
   private pendingResumeMs = 0;
   private primed = false;
+  /* Last progress values emitted — lets the poll timer skip redundant
+   * emissions (identical position/duration would only burn store writes,
+   * session-save scheduling and MediaSession position updates). */
+  private lastPosMs = -1;
+  private lastDurMs = -1;
+  /* Increments per loadTrack; async callbacks compare against the token they
+   * captured so a slow player bootstrap for an abandoned load can never
+   * clobber a newer one (rapid A→B→A switching). */
+  private loadToken = 0;
 
   constructor() {
     this.el = new Audio();
@@ -364,11 +373,13 @@ export class AudioEngine {
     this.evictProgressTimer();
     this.progressTimer = window.setInterval(() => {
       if (this.sink !== "yt" || !this.yt || !this.ytReady || this.sourceId === null) return;
-      this.emit({
-        type: "progress",
-        positionMs: this.yt.getCurrentTime() * 1000,
-        durationMs: this.yt.getDuration() * 1000 || 0,
-      });
+      const positionMs = this.yt.getCurrentTime() * 1000;
+      const durationMs = this.yt.getDuration() * 1000 || 0;
+      /* Paused (or buffering at the same spot) → nothing changed → stay quiet. */
+      if (positionMs === this.lastPosMs && durationMs === this.lastDurMs) return;
+      this.lastPosMs = positionMs;
+      this.lastDurMs = durationMs;
+      this.emit({ type: "progress", positionMs, durationMs });
     }, 500);
   }
 
@@ -555,8 +566,12 @@ export class AudioEngine {
     this.clearStallTimer();
     this.evictWatchdog();
     this.generation += 1;
+    this.loadToken += 1;
+    const token = this.loadToken;
     this.playingReported = false;
     this.ytOpened = false;
+    this.lastPosMs = -1;
+    this.lastDurMs = -1;
     this.sourceId = sourceId;
     this.sourceUrl = null;
     this.savedPositionMs = resumeAtMs;
@@ -565,14 +580,14 @@ export class AudioEngine {
     this.armProgressTimer();
     this.ensureYtPlayer()
       .then((player) => {
-        if (this.sink !== "yt" || this.sourceId !== sourceId) return;
+        if (token !== this.loadToken || this.sourceId !== sourceId) return;
         player.loadVideoById(videoId);
         if (resumeAtMs > RESUME_POSITION_MS) {
           player.seekTo(resumeAtMs / 1000, true);
         }
       })
       .catch(() => {
-        if (this.sink !== "yt" || this.sourceId !== sourceId) return;
+        if (token !== this.loadToken || this.sourceId !== sourceId) return;
         this.evictWatchdog();
         this.emit({
           type: "error",
@@ -673,6 +688,12 @@ export class AudioEngine {
 
   pause(): void {
     this.userWantsPlayback = false;
+    /*
+     * Also cancel a still-pending play intent: the user asked for playback
+     * while the player was loading, then changed their mind before the
+     * player became ready — onReady must not start it afterwards.
+     */
+    this.wantPlay = false;
     if (this.sink === "yt") {
       if (this.yt && this.ytReady) this.yt.pauseVideo();
       return;

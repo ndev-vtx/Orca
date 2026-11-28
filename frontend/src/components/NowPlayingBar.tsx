@@ -68,14 +68,23 @@ export default function NowPlayingBar() {
   const retryCurrent = usePlayerStore((s) => s.retryCurrent);
   const isMobile = useIsMobile();
 
-  useEffect(() => {
-    document.title = current
-      ? `${current.title} · ${current.artist || "Unknown artist"}`
-      : "Orca";
-  }, [current]);
   const [pipWin, setPipWin] = useState<Window | null>(null);
   const [fallbackOpen, setFallbackOpen] = useState(false);
   const pipOpen = pipWin !== null || fallbackOpen;
+
+  useEffect(() => {
+    const title = current
+      ? `${current.title} · ${current.artist || "Unknown artist"}`
+      : "Orca";
+    document.title = title;
+    /*
+     * A Document PiP window copies the opener's title at requestWindow time
+     * and never follows later changes — its title bar (with the ✕ close
+     * button) would forever show the track that was playing when it opened.
+     * Keep it in sync with the live track.
+     */
+    if (pipWin) pipWin.document.title = title;
+  }, [current, pipWin]);
 
   const openPicker = useUiStore((s) => s.openPicker);
 
